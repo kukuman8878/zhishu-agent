@@ -51,14 +51,18 @@ def _find_origin_pdf(doc_id: str) -> Optional[Path]:
         cands.append(Path(settings.original_pdf_dir) / f"{doc_id}_origin.pdf")
         cands.append(Path(settings.original_pdf_dir) / f"{doc_id}.pdf")
     if settings.mineru_parsed_dir:
-        cands.append(Path(settings.mineru_parsed_dir) / doc_id / "auto" / f"{doc_id}_layout.pdf")
+        cands.append(
+            Path(settings.mineru_parsed_dir) / doc_id / "auto" / f"{doc_id}_layout.pdf"
+        )
     for c in cands:
         if c.exists():
             return c
     return None
 
 
-def render_page_images(doc: DocRecord, out_dir: str | Path, dpi: Optional[int] = None) -> int:
+def render_page_images(
+    doc: DocRecord, out_dir: str | Path, dpi: Optional[int] = None
+) -> int:
     """渲染文档全部页面图，返回成功数量。out_dir/{doc_id}/page_XXXX.jpg"""
     dpi = dpi or settings.page_image_dpi
     doc_dir = Path(out_dir) / doc.doc_id
