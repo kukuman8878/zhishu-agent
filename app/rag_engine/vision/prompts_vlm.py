@@ -122,7 +122,7 @@ def verify_token_user(first_reading: str, candidates: str = "") -> str:
         extra = (
             "\nCandidate readings (from a previous pass):\n"
             + candidates
-            + "\nYour first pass reported: \""
+            + '\nYour first pass reported: "'
             + first_reading
             + '"\n'
         )
