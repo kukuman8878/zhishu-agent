@@ -35,8 +35,12 @@ from .verifier import verify_answer
 # 第二个"利用方式"子问句的答案页与主问句语义距离远，主检索常取不到，
 # 用实体构造利用子查询做二次检索并合并
 _UTIL_PART_RE = _re.compile(r"\band\s+how\s+is\s+it\s+(?:mainly\s+)?utilized", _re.I)
-_USE_VERB_RE = _re.compile(r"\b(use[sd]?|using|uses|utiliz\w+|application[s]?|employed)\b", _re.I)
-_MARKET_RE = _re.compile(r"\b(domestic market|export|sold|demand|market share)\b", _re.I)
+_USE_VERB_RE = _re.compile(
+    r"\b(use[sd]?|using|uses|utiliz\w+|application[s]?|employed)\b", _re.I
+)
+_MARKET_RE = _re.compile(
+    r"\b(domestic market|export|sold|demand|market share)\b", _re.I
+)
 
 
 def _util_sub_question(question: str, route) -> str:
@@ -102,7 +106,11 @@ def _complete_usage(question: str, route, evidence, answer: str) -> str:
     added = []
     for s in sents[:6]:
         check, display = _usage_key_term(s)
-        if check and check.lower() not in answer.lower() and display.lower() not in answer.lower():
+        if (
+            check
+            and check.lower() not in answer.lower()
+            and display.lower() not in answer.lower()
+        ):
             added.append(f"It is also used in {display}.")
     if not added:
         return answer
@@ -123,7 +131,9 @@ class AgentTrace:
     strategy_name: str = ""
 
 
-def _neighbor_expand(store: IndexStore, evidence: List[PageEvidence]) -> List[PageEvidence]:
+def _neighbor_expand(
+    store: IndexStore, evidence: List[PageEvidence]
+) -> List[PageEvidence]:
     """把当前证据中得分最高的前 3 页的相邻页加入（同文档 ±1 页）。
 
     只从高分页扩展：低分页的邻居多为噪声，会把证据带偏（实证观察）。
@@ -186,7 +196,9 @@ class Agent:
         # 视觉复合题专用模型（如 30B 对趋势/多条件推理更强）
         self.vlm_visual_client = self.vlm_client
         if settings.llm_model_visual != self.vlm_client.model:
-            self.vlm_visual_client = api_client.VLMClient(model=settings.llm_model_visual)
+            self.vlm_visual_client = api_client.VLMClient(
+                model=settings.llm_model_visual
+            )
 
     async def _answer_comparison_decomposed(
         self,
@@ -199,7 +211,9 @@ class Agent:
         cited = []
         for sq in sub_questions:
             vec = (await api_client.embed_texts([sq]))[0]
-            evidence = await retrieve(sq, self.store, vec, top_k=settings.page_topk_text)
+            evidence = await retrieve(
+                sq, self.store, vec, top_k=settings.page_topk_text
+            )
             ctx = _context_text(evidence)
             try:
                 raw = await api_client.chat_complete(
@@ -226,7 +240,10 @@ class Agent:
         raw = await api_client.chat_complete(
             [
                 {"role": "system", "content": SYNTHESIS_SYSTEM},
-                {"role": "user", "content": synthesis_user(question, "\n".join(sub_results))},
+                {
+                    "role": "user",
+                    "content": synthesis_user(question, "\n".join(sub_results)),
+                },
             ],
             max_tokens=settings.answer_max_tokens,
             temperature=0.0,
@@ -243,7 +260,9 @@ class Agent:
         t0 = time.perf_counter()
 
         # 1. 路由与问题向量化并行（互不依赖）
-        route_task = asyncio.create_task(route_question(question, use_vlm=self.use_vlm_router))
+        route_task = asyncio.create_task(
+            route_question(question, use_vlm=self.use_vlm_router)
+        )
         embed_task = asyncio.create_task(api_client.embed_texts([question]))
         route = await route_task
         trace.route = route
@@ -258,9 +277,11 @@ class Agent:
         # 页面图总是送（路由对图题判断不可靠，且整页图对文本题也无害）
         include_images = not settings.no_image_mode
         # 图片/表格题答案在图/表里，加大元素相关度权重
-        element_weight = 0.35 if route.answer_type in (
-            "image_only", "table_required", "image_plus_text"
-        ) else 0.0
+        element_weight = (
+            0.35
+            if route.answer_type in ("image_only", "table_required", "image_plus_text")
+            else 0.0
+        )
         rerank_on_elements = False
 
         # 2. 图/表题：按题型分流视觉策略（视觉 Router）：
@@ -270,12 +291,17 @@ class Agent:
         #    - text_only        → 常规路径（仅在校验失败后 rescue 视觉策略）
         if not settings.no_image_mode:
             top_elements = await retrieve_top_elements(vec, self.store, top_k=3)
-            use_element_shortcut = route.answer_type in ("image_only", "table_required", "image_plus_text")
+            use_element_shortcut = route.answer_type in (
+                "image_only",
+                "table_required",
+                "image_plus_text",
+            )
             if top_elements and use_element_shortcut:
                 strat = self.image_strategy
                 top_kind = top_elements[0][0].get("kind")
                 if route.answer_type == "table_required":
                     from ..vision.strategies import BaselineStrategy, VerifyStrategy
+
                     if top_kind == "table":
                         # 表元素 → 描述+markdown 证据（实测优于直读表格图）
                         strat = BaselineStrategy()
@@ -284,11 +310,18 @@ class Agent:
                         strat = VerifyStrategy()
                 elif route.answer_type == "image_plus_text":
                     from ..vision.strategies import HybridStrategy
+
                     strat = HybridStrategy()
                 sres = await strat.answer_visual(
-                    question, top_elements, route, self.store,
-                    self.vlm_visual_client if route.answer_type == "image_plus_text" else self.vlm_client,
-                    sample_id=sample_id, workdir=self.workdir,
+                    question,
+                    top_elements,
+                    route,
+                    self.store,
+                    self.vlm_visual_client
+                    if route.answer_type == "image_plus_text"
+                    else self.vlm_client,
+                    sample_id=sample_id,
+                    workdir=self.workdir,
                 )
                 trace.strategy_name = strat.name
                 trace.vlm_outputs = sres.vlm_outputs
@@ -306,21 +339,35 @@ class Agent:
                     )
                     for p in sres.evidence_pages
                 ]
-                if sres.answer and "NOT_FOUND" not in sres.answer and "missing" not in sres.answer.lower():
+                if (
+                    sres.answer
+                    and "NOT_FOUND" not in sres.answer
+                    and "missing" not in sres.answer.lower()
+                ):
                     # 阶段/序列题：逐条 VLM 读取证据重建流转链，取「全合法阶段」最长者
                     if stage_elements:
                         from ..vision.strategies import _valid_stage
+
                         best_ans, best_len = sres.answer, 0
-                        for v in (sres.vlm_outputs or []):
+                        for v in sres.vlm_outputs or []:
                             ev = str(v.get("output", ""))
                             enriched = enforce_completeness(
-                                {"answer": sres.answer, "evidence": ev, "confidence": 1.0}, question
+                                {
+                                    "answer": sres.answer,
+                                    "evidence": ev,
+                                    "confidence": 1.0,
+                                },
+                                question,
                             )
                             ans = enriched.get("answer") or ""
                             m = _re.search(r"The sequence is: (.+?)[.!]?$", ans)
                             if m:
                                 items = [x.strip() for x in m.group(1).split(",")]
-                                if items and all(_valid_stage(x) for x in items) and len(items) > best_len:
+                                if (
+                                    items
+                                    and all(_valid_stage(x) for x in items)
+                                    and len(items) > best_len
+                                ):
                                     best_ans, best_len = ans, len(items)
                         if best_len >= 5:
                             sres.answer = best_ans
@@ -345,15 +392,23 @@ class Agent:
 
         # 3. 常规路径：检索 → 作答
         evidence = await retrieve(
-            question, self.store, vec, top_k=top_k, element_weight=element_weight,
+            question,
+            self.store,
+            vec,
+            top_k=top_k,
+            element_weight=element_weight,
             rerank_on_elements=rerank_on_elements,
         )
         util_q = _util_sub_question(question, route)
         if util_q:
             util_vec = (await api_client.embed_texts([util_q]))[0]
             more = await retrieve(
-                util_q, self.store, util_vec, top_k=top_k,
-                element_weight=element_weight, rerank_on_elements=rerank_on_elements,
+                util_q,
+                self.store,
+                util_vec,
+                top_k=top_k,
+                element_weight=element_weight,
+                rerank_on_elements=rerank_on_elements,
             )
             seen = {e.pkey for e in evidence}
             for m in more:
@@ -365,8 +420,11 @@ class Agent:
         trace.timing["retrieve"] = round(time.perf_counter() - t0, 3)
 
         result = await answer_with_evidence(
-            question, evidence, include_images=include_images,
-            question_type=route.question_type, answer_type=route.answer_type,
+            question,
+            evidence,
+            include_images=include_images,
+            question_type=route.question_type,
+            answer_type=route.answer_type,
             extra_hint=_usage_sentences(question, route, evidence),
         )
         trace.answer = result.answer
@@ -381,7 +439,9 @@ class Agent:
         else:
             for rnd in range(settings.max_agent_rounds):
                 trace.rounds = rnd + 1
-                supported, reason, missing_facts = await verify_answer(question, result.answer, evidence)
+                supported, reason, missing_facts = await verify_answer(
+                    question, result.answer, evidence
+                )
                 trace.verify_reason = reason
                 if supported:
                     break
@@ -389,8 +449,12 @@ class Agent:
                 top_k2 = top_k + 3
                 if len(evidence) < top_k2:
                     more = await retrieve(
-                        question, self.store, vec, top_k=top_k2,
-                        element_weight=element_weight, rerank_on_elements=rerank_on_elements,
+                        question,
+                        self.store,
+                        vec,
+                        top_k=top_k2,
+                        element_weight=element_weight,
+                        rerank_on_elements=rerank_on_elements,
                     )
                     seen = {e.pkey for e in evidence}
                     for m in more:
@@ -400,8 +464,11 @@ class Agent:
                 evidence = evidence[: max(top_k2, settings.page_topk_visual + 2)]
                 trace.evidence = evidence
                 result = await answer_with_evidence(
-                    question, evidence, include_images=include_images,
-                    question_type=route.question_type, answer_type=route.answer_type,
+                    question,
+                    evidence,
+                    include_images=include_images,
+                    question_type=route.question_type,
+                    answer_type=route.answer_type,
                     extra_hint=missing_facts[:400] if missing_facts else "",
                 )
                 trace.answer = result.answer
@@ -412,12 +479,19 @@ class Agent:
         #    - 图/表题：视觉策略补答（置信度门控，防垃圾覆盖）
         if not settings.no_image_mode and not supported and not trace.strategy_name:
             wide = await retrieve(
-                question, self.store, vec, top_k=settings.page_topk_visual + 4,
-                element_weight=0.0, rerank_on_elements=False,
+                question,
+                self.store,
+                vec,
+                top_k=settings.page_topk_visual + 4,
+                element_weight=0.0,
+                rerank_on_elements=False,
             )
             wide_res = await answer_with_evidence(
-                question, wide, include_images=True,
-                question_type=route.question_type, answer_type=route.answer_type,
+                question,
+                wide,
+                include_images=True,
+                question_type=route.question_type,
+                answer_type=route.answer_type,
                 extra_hint=missing_facts[:400] if missing_facts else "",
             )
             trace.evidence = wide
@@ -427,14 +501,25 @@ class Agent:
             top_elements = await retrieve_top_elements(vec, self.store, top_k=3)
             if top_elements:
                 sres = await self.image_strategy.answer_visual(
-                    question, top_elements, route, self.store, self.vlm_client,
-                    sample_id=sample_id, workdir=self.workdir,
+                    question,
+                    top_elements,
+                    route,
+                    self.store,
+                    self.vlm_client,
+                    sample_id=sample_id,
+                    workdir=self.workdir,
                 )
                 trace.vlm_outputs = sres.vlm_outputs
                 trace.selected_images = sres.selected_images
                 trace.crop_images = sres.crop_images
-                if sres.answer and "NOT_FOUND" not in sres.answer and "missing" not in sres.answer.lower():
-                    text_empty = not result.answer.strip() or "NOT_FOUND" in result.answer
+                if (
+                    sres.answer
+                    and "NOT_FOUND" not in sres.answer
+                    and "missing" not in sres.answer.lower()
+                ):
+                    text_empty = (
+                        not result.answer.strip() or "NOT_FOUND" in result.answer
+                    )
                     overlap = _answer_overlaps_question(sres.answer, question)
                     if text_empty or (sres.confidence >= 0.9 and overlap):
                         trace.answer = sres.answer
