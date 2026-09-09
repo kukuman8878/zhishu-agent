@@ -45,7 +45,9 @@ def evidence_text_with_elements(evidence: List[PageEvidence]) -> str:
     return "\n".join(parts)
 
 
-def _context_images(evidence: List[PageEvidence], include_elements: bool) -> List[tuple[str, str]]:
+def _context_images(
+    evidence: List[PageEvidence], include_elements: bool
+) -> List[tuple[str, str]]:
     """返回带标签的图片列表 [(标签, 图片路径)]。
 
     只送整页图（整页已含图/表，且避免元素裁剪图挤占后面的关键页）。
@@ -83,7 +85,10 @@ def _build_messages(
     content.append({"type": "text", "text": answer_user(ctx, question) + hint})
     return [
         {"role": "system", "content": system},
-        {"role": "user", "content": content if imgs else answer_user(ctx, question) + hint},
+        {
+            "role": "user",
+            "content": content if imgs else answer_user(ctx, question) + hint,
+        },
     ]
 
 
@@ -98,10 +103,16 @@ def parse_answer(raw: str) -> AnswerResult:
         conf = data.get("confidence", 0.0)
         try:
             conf = float(conf)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             conf = 0.0
         if answer:
-            return AnswerResult(answer=answer, analysis=analysis, cited_pages=cited, confidence=conf, raw=raw)
+            return AnswerResult(
+                answer=answer,
+                analysis=analysis,
+                cited_pages=cited,
+                confidence=conf,
+                raw=raw,
+            )
     return AnswerResult(answer=raw.strip(), raw=raw)
 
 
@@ -115,11 +126,16 @@ async def answer_with_evidence(
     extra_hint: str = "",
 ) -> AnswerResult:
     messages = _build_messages(
-        question, evidence, include_images=include_images,
-        question_type=question_type, answer_type=answer_type,
+        question,
+        evidence,
+        include_images=include_images,
+        question_type=question_type,
+        answer_type=answer_type,
         extra_hint=extra_hint,
     )
-    raw = await api_client.chat_complete(messages, max_tokens=max_tokens, temperature=0.0)
+    raw = await api_client.chat_complete(
+        messages, max_tokens=max_tokens, temperature=0.0
+    )
     return parse_answer(raw)
 
 
@@ -153,10 +169,15 @@ async def answer_with_element_images(
                 f"Caption: {caption}"
             )
         img_msgs.append(
-            {"type": "text", "text": f"[Image for figure/table {i + 1}, page {page_no}]"}
+            {
+                "type": "text",
+                "text": f"[Image for figure/table {i + 1}, page {page_no}]",
+            }
         )
         img_msgs.append(api_client.image_message(el["img_path"]))
-        ctx_parts.append(f"--- Page {page_no} ({doc_id}) ---\n{page.get('text', '')[:1200]}")
+        ctx_parts.append(
+            f"--- Page {page_no} ({doc_id}) ---\n{page.get('text', '')[:1200]}"
+        )
 
     # 描述主证据在前，图片/页文本辅助在后
     user_text = (
@@ -171,8 +192,11 @@ async def answer_with_element_images(
     )
     content = img_msgs + [{"type": "text", "text": user_text}]
     raw = await api_client.chat_complete(
-        [{"role": "system", "content": IMAGE_DESC_ANSWER_SYSTEM},
-         {"role": "user", "content": content}],
-        max_tokens=max_tokens, temperature=0.0,
+        [
+            {"role": "system", "content": IMAGE_DESC_ANSWER_SYSTEM},
+            {"role": "user", "content": content},
+        ],
+        max_tokens=max_tokens,
+        temperature=0.0,
     )
     return parse_answer(raw)
