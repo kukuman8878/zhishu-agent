@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import re
 
-_UNIT = r"(?:mm|cm|m|km|kV|V|A|Hz|%|MPa|kPa|psi|nm|µm|um|m²|mm²|°C|kg|kN|kN/m|NGN|USD|m/s)"
+_UNIT = (
+    r"(?:mm|cm|m|km|kV|V|A|Hz|%|MPa|kPa|psi|nm|µm|um|m²|mm²|°C|kg|kN|kN/m|NGN|USD|m/s)"
+)
 _CRIT_RE = re.compile(
     r"("
     rf"\d[\d,./]*\s*{_UNIT}"
@@ -23,7 +25,9 @@ _CRIT_RE = re.compile(
 
 _DIM_RE = re.compile(rf"\d[\d,./]*\s*{_UNIT}", re.I)
 _BLOCK_RE = re.compile(r"[Bb]lock\s*[A-Z](?:\b|$)")
-_MODEL_RE = re.compile(r"(?:Model|Type|No\.?|Ref\.?|Spec)\s*[A-Z0-9][A-Za-z0-9\-/]*", re.I)
+_MODEL_RE = re.compile(
+    r"(?:Model|Type|No\.?|Ref\.?|Spec)\s*[A-Z0-9][A-Za-z0-9\-/]*", re.I
+)
 _NUM_RE = re.compile(r"[-+]?\d[\d,./]*\.?\d*")
 
 
