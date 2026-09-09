@@ -9,10 +9,19 @@ from typing import List
 from .. import api_client
 from .prompts import ROUTER_SYSTEM, ROUTER_USER
 
-_COMPARE_WORDS = re.compile(r"\b(compare|comparison|versus|vs\.?|difference|higher|lower|which one|both)\b", re.I)
-_SUMMARY_WORDS = re.compile(r"\b(summarize|summary|overview|main points|describe the overall)\b", re.I)
-_TABLE_WORDS = re.compile(r"\b(table|row|column|parameters|measurements|values of)\b", re.I)
-_IMAGE_WORDS = re.compile(r"\b(figure|chart|plot|diagram|graph|illustration|image)\b", re.I)
+_COMPARE_WORDS = re.compile(
+    r"\b(compare|comparison|versus|vs\.?|difference|higher|lower|which one|both)\b",
+    re.I,
+)
+_SUMMARY_WORDS = re.compile(
+    r"\b(summarize|summary|overview|main points|describe the overall)\b", re.I
+)
+_TABLE_WORDS = re.compile(
+    r"\b(table|row|column|parameters|measurements|values of)\b", re.I
+)
+_IMAGE_WORDS = re.compile(
+    r"\b(figure|chart|plot|diagram|graph|illustration|image)\b", re.I
+)
 # 离子信号/指印类题：答案是图像面板+正文逐对象结论，必须走图文路径
 _ION_IMG_WORDS = re.compile(r"\b(ion signals?|fingermarks?|MALDI)\b", re.I)
 # 阶段图题（如 "stages ... cyclical approach"）：答案在循环流程图里，需强制图文路径
@@ -24,8 +33,13 @@ _WEAKNESS_ABSENCE = re.compile(
     re.I,
 )
 # 财务指标 + 期间变化（如 "shift in accumulated profits ... over the period"）→ 表格题
-_FIN_METRIC = re.compile(r"\b(profit|earnings|revenue|equity|capital|assets|liabilities|retained|balance|accumulated)\b", re.I)
-_PERIOD_SHIFT = re.compile(r"\b(over the period|shift|change|movement|decline|increase|difference)\b", re.I)
+_FIN_METRIC = re.compile(
+    r"\b(profit|earnings|revenue|equity|capital|assets|liabilities|retained|balance|accumulated)\b",
+    re.I,
+)
+_PERIOD_SHIFT = re.compile(
+    r"\b(over the period|shift|change|movement|decline|increase|difference)\b", re.I
+)
 
 
 @dataclass
@@ -61,7 +75,9 @@ def heuristic_route(question: str) -> Route:
     else:
         at = "text_only"
     needs_image = at in ("image_only", "table_required", "image_plus_text")
-    return Route(question_type=qt, answer_type=at, needs_image=needs_image, source="heuristic")
+    return Route(
+        question_type=qt, answer_type=at, needs_image=needs_image, source="heuristic"
+    )
 
 
 async def route_question(question: str, use_vlm: bool = True) -> Route:
@@ -83,7 +99,12 @@ async def route_question(question: str, use_vlm: bool = True) -> Route:
             at = str(data.get("answer_type", "")).strip()
             if qt not in ("factual_retrieval", "comparison", "summarization"):
                 qt = "factual_retrieval"
-            if at not in ("text_only", "image_only", "table_required", "image_plus_text"):
+            if at not in (
+                "text_only",
+                "image_only",
+                "table_required",
+                "image_plus_text",
+            ):
                 at = "text_only"
             subs = data.get("sub_questions", [])
             if not isinstance(subs, list):
@@ -91,13 +112,17 @@ async def route_question(question: str, use_vlm: bool = True) -> Route:
             conf = data.get("confidence", 0.8)
             try:
                 conf = float(conf)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 conf = 0.8
             # 启发式兜底：VLM 把图题误判为 text_only 时强制升级（P4.5）；
             # 离子信号题即使被 VLM 判为表格题也要强制升级到图文路径
             h = heuristic_route(question)
             source = "vlm"
-            if at == "text_only" and h.answer_type in ("image_only", "table_required", "image_plus_text"):
+            if at == "text_only" and h.answer_type in (
+                "image_only",
+                "table_required",
+                "image_plus_text",
+            ):
                 at = h.answer_type
                 conf = min(conf, 0.6)
                 source = "vlm+heuristic"
@@ -108,9 +133,8 @@ async def route_question(question: str, use_vlm: bool = True) -> Route:
             return Route(
                 question_type=qt,
                 answer_type=at,
-                needs_image=bool(data.get("needs_image", False)) or at in (
-                    "image_only", "table_required", "image_plus_text"
-                ),
+                needs_image=bool(data.get("needs_image", False))
+                or at in ("image_only", "table_required", "image_plus_text"),
                 key_entities=[str(e) for e in data.get("key_entities", [])][:8],
                 sub_questions=[str(s) for s in subs][:5],
                 confidence=conf,
