@@ -20,7 +20,9 @@ class ApiError(RuntimeError):
     pass
 
 
-async def _post_json(client: httpx.AsyncClient, url: str, payload: dict, timeout: float) -> dict:
+async def _post_json(
+    client: httpx.AsyncClient, url: str, payload: dict, timeout: float
+) -> dict:
     headers = {
         "Authorization": f"Bearer {settings.api_key}",
         "Content-Type": "application/json",
@@ -28,7 +30,9 @@ async def _post_json(client: httpx.AsyncClient, url: str, payload: dict, timeout
     last_err: Optional[Exception] = None
     for attempt in range(5):
         try:
-            resp = await client.post(url, json=payload, headers=headers, timeout=timeout)
+            resp = await client.post(
+                url, json=payload, headers=headers, timeout=timeout
+            )
             if resp.status_code == 429:
                 await asyncio.sleep(2 * (attempt + 1))
                 continue
@@ -140,7 +144,10 @@ async def _chat_complete_with_usage(
         usage = data.get("usage") or {}
         return (
             choices[0]["message"]["content"] or "",
-            (int(usage.get("prompt_tokens", 0)), int(usage.get("completion_tokens", 0))),
+            (
+                int(usage.get("prompt_tokens", 0)),
+                int(usage.get("completion_tokens", 0)),
+            ),
         )
     finally:
         if owns_client:
