@@ -26,7 +26,9 @@ uv run python -m app.scripts.build_meta_knowledge -c conf/meta_config.yaml
 # 前端（必须先 cd frontend）
 cd frontend && pnpm dev     # 类型检查：pnpm lint（=tsc --noEmit）
 ```
-无测试套件。手动验证：`POST /api/query`（SSE），样例 `{"query":"统计华北地区的销售总额"}`。
+单元测试（`tests/`，纯逻辑无外部依赖）：`uv run pytest -q`；代码风格：`uv run ruff check app/ && uv run ruff format --check app/`。
+push 到 GitHub 后 CI（`.github/workflows/ci.yml`）自动跑 ruff + pytest + 前端 tsc。
+端到端手动验证：`POST /api/query`（SSE），样例 `{"query":"统计华北地区的销售总额"}`。
 
 doc/hybrid 链路**进程内**调用文档问答引擎（代码 `app/rag_engine/`）：
 - 索引 402M 在 `data/doc_index/`（`.env` 的 `INDEX_DIR` 指向，装载约 0.5s），随智数 lifespan 启动装载；
