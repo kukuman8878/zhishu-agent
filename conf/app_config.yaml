@@ -1,0 +1,87 @@
+logging:
+  file:
+    enable: true
+    level: INFO
+    path: logs
+    rotation: "10 MB"
+    retention: "7 days"
+  console:
+    enable: true
+    level: INFO
+
+db_meta:
+  host: localhost
+  port: 3306
+  user: didilili
+  password: dili123
+  database: meta
+
+db_dw:
+  host: localhost
+  port: 3306
+  user: didilili
+  password: dili123
+  database: dw
+
+qdrant:
+  host: localhost
+  port: 6333
+  embedding_size: 1024
+
+embedding:
+  host: localhost
+  port: 8081
+  model: BAAI/bge-large-zh-v1.5
+
+# 语义重排（cross-encoder reranker）配置：与 embedding 同用 TEI 服务，独立端口跑 bge-reranker 模型
+rerank:
+  host: localhost
+  port: 8082
+  model: BAAI/bge-reranker-base
+  # 召回阶段先从 Qdrant/ES 捞出更多候选（recall_limit），再交给 reranker 精排截取 top_k
+  recall_limit: 30
+  top_k: 10
+
+es:
+  host: localhost
+  port: 9200
+  index_name: data_agent
+
+llm:
+  model_name: Pro/zai-org/GLM-5.1
+  api_key: ${oc.env:LLM_API_KEY}
+  base_url: https://api.siliconflow.cn/v1
+  # 通用闲聊/意图判别使用的轻量快速模型，与问数主模型隔离
+  # 注意：不要用免费档模型，硅基流动免费档被限速，单次可达 40s+，这里选响应快且便宜的模型
+  chat_model_name: deepseek-ai/DeepSeek-V3
+
+# 跨源综合（hybrid）配置：v1=整句并行拼接；v2=计划-执行（子任务拆解）
+hybrid:
+  v2_enabled: false
+
+# 文档问答引擎（源码已融入本进程 app/rag_engine/，不再外接独立服务；
+# enabled=false 时跳过 402M 索引装载并走 message 降级）
+doc_engine:
+  base_url: ""  # 进程内调用，兼容保留字段不再使用
+  timeout: 180.0
+  enabled: true
+
+# LLMWiki 式知识沉淀：sql/doc/hybrid 问答的最终结论沉淀到 Meta MySQL + Qdrant，
+# 后续相似提问先查知识库，命中则直接复用沉淀答案（不再跑全链路）
+knowledge:
+  enabled: true
+  deposit_enabled: true
+  # 召回复用阈值：与沉淀问题向量相似度达到该值即直接复用沉淀答案。
+  # bge-large-zh-v1.5 下同义改述约 0.80-0.86，异义业务问题约 0.5-0.65，取 0.78
+  recall_score_threshold: 0.78
+  recall_limit: 1
+  # 去重阈值：沉淀时与已有问题相似度达到该值则合并刷新，而不是新增重复条目
+  dedup_score_threshold: 0.80
+
+# 查询轨迹持久化：每次问答结束后把结构化轨迹写入 query_trace 表（复盘/评估用）
+trace:
+  enabled: true
+
+# API 鉴权配置：api_key 为空时跳过鉴权（开发模式）
+api:
+  api_key: ${oc.env:API_KEY,""}

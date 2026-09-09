@@ -1,0 +1,90 @@
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: dili123
+      MYSQL_USER: didilili
+      MYSQL_PASSWORD: dili123
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql:/docker-entrypoint-initdb.d
+    command: --character-set-server=utf8mb4
+      --collation-server=utf8mb4_general_ci
+
+  elasticsearch:
+    build: ./elasticsearch
+    container_name: elasticsearch
+    restart: unless-stopped
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      # 限制 JVM 堆内存，避免本机(总内存较小)同时跑多容器时 OOM
+      ES_JAVA_OPTS: "-Xms1g -Xmx1g"
+    ports:
+      - "9200:9200"
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+  kibana:
+    image: kibana:8.19.10
+    container_name: kibana
+    restart: unless-stopped
+    environment:
+      ELASTICSEARCH_HOSTS: http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    depends_on:
+      - elasticsearch
+
+  qdrant:
+    image: qdrant/qdrant:v1.16
+    container_name: qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333" # HTTP
+      - "6334:6334" # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  embedding:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.8
+    platform: linux/amd64
+    container_name: embedding
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+    environment:
+      MODEL_ID: /models/bge-large-zh-v1.5
+      MAX_CONCURRENT_REQUESTS: "16"
+      MAX_BATCH_TOKENS: "16384"
+    volumes:
+      - ./embedding/bge-large-zh-v1.5:/models/bge-large-zh-v1.5
+
+  # cross-encoder 语义重排服务：与 embedding 同用 TEI，独立端口跑 bge-reranker 模型
+  # 需先把 reranker 模型下载到 docker/embedding/bge-reranker-base 再挂载
+  rerank:
+    image: ghcr.io/huggingface/text-embeddings-inference:cpu-1.8
+    platform: linux/amd64
+    container_name: rerank
+    restart: unless-stopped
+    ports:
+      - "8082:80"
+    # 注意：本机 13GB 内存不足以在 CPU 上同时跑 embedding + 大体积 reranker，
+    # 故选用更小的 bge-reranker-base（约 1.1GB 权重）以在此机上跑通真实重排。
+    # MAX_BATCH_TOKENS/并发调低：避免 rerank 推理时 batch 内存峰值过大挤爆整机内存(OOM)
+    environment:
+      MODEL_ID: /models/bge-reranker-base
+      MAX_CONCURRENT_REQUESTS: "1"
+      MAX_BATCH_TOKENS: "2048"
+      MAX_BATCH_REQUESTS: "1"
+      MAX_CLIENT_BATCH_SIZE: "8"
+    volumes:
+      - ./embedding/bge-reranker-base:/models/bge-reranker-base
+
+volumes:
+  mysql_data:
+  es_data:
+  qdrant_data:
