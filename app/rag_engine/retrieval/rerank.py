@@ -1,6 +1,6 @@
 """重排与页面证据组装。
 
-两阶段评分（借鉴 ERC2 冠军的加权融合思路，用赛方指定重排模型实现）：
+两阶段评分（稠密分 + 交叉编码器重排分加权融合）：
   final = rerank_weight * bge_rerank_score + (1-rerank_weight) * 归一化稠密分
 """
 

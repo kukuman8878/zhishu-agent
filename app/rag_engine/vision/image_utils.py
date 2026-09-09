@@ -113,7 +113,7 @@ def render_pdf_region(
 
 
 def image_density(img: Image.Image) -> float:
-    """边缘/纹理密度启发值：工程图、密集小字图显著偏高（P5 视觉 Router 用）。"""
+    """边缘/纹理密度启发值：工程图、密集小字图显著偏高（供视觉路由判题用）。"""
     g = img.convert("L").resize((512, 512), Image.BILINEAR)
     arr = np.asarray(g, dtype=np.float32)
     gy, gx = np.gradient(arr)

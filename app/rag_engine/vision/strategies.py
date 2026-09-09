@@ -186,7 +186,7 @@ def _z_assign_last_panel(panels, extra_pool=None):
     """尾部面板（类最多）最容易读错：用前一面板的同类（n 相近）值作锚，
     从候选值池（本面板读数 + 裁剪二次读取）中按最接近锚的原则分配，剩余槽位按票数取。
 
-    8B 等小模型读不到 n 值时走位置型回退：面板 k 前 k-1 项 ≈ 面板 k-1 对应项（嵌套类结构），
+    小模型读不到 n 值时走位置型回退：面板 k 前 k-1 项 ≈ 面板 k-1 对应项（嵌套类结构），
     仅当池内对每个锚都存在 ±0.15 匹配才启用，否则保留原读数。
     """
     if len(panels) < 2:
@@ -362,7 +362,7 @@ def enforce_completeness(parsed: dict, question: str) -> dict:
     """模型经常在 evidence 里读全了序列（如 5 个阶段）但 answer 只写 4 个。
 
     确定性修复：问题含 stages/steps/sequence 时，
-    1) 仅从 VLM evidence（图的权威抽取，docx STEP 8：用显式标识符重建）提取阶段流转对
+    1) 仅从 VLM evidence（图的权威抽取：用显式标识符重建）提取阶段流转对
        重建完整序列；页面正文等噪音源（正文表头被误配为阶段）不参与；
     2) 兜底用 evidence 引号项去重列表（严格引号+阶段词校验）。
     """
@@ -988,7 +988,7 @@ class VerifyStrategy(FullPlusCropStrategy):
     async def answer_visual(self, question, elements, route, store, client, sample_id="", workdir=""):
         res = await super().answer_visual(question, elements, route, store, client, sample_id, workdir)
         if getattr(res, "ocr_corrected", False):
-            # OCR 列聚类已确定性纠正（docx STEP 5 独立读数），LLM 复核不再覆盖
+            # OCR 列聚类已确定性纠正（独立读数），LLM 复核不再覆盖
             return res
         el = elements[0][0]
         page = res.chosen_page or (elements[0][1] if elements else None)

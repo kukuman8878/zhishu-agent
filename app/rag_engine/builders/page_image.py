@@ -1,6 +1,6 @@
 """页面图生成：构建期把 PDF 页面渲染为 JPEG，供 VLM 读图。
 
-优先使用赛方/数据集提供的页面 PNG（images/{domain}/{id}/{id}_page_XXXX.png），
+优先使用数据源提供的页面 PNG（images/{domain}/{id}/{id}_page_XXXX.png），
 缺失时用 PyMuPDF 从原始 PDF 渲染。渲染结果缓存在索引目录，运行期零成本。
 """
 
@@ -19,7 +19,7 @@ _PAGE_PNG_RE = None
 
 
 def _lookup_provided_page_image(doc_id: str, page_idx: int) -> Optional[str]:
-    """按 UniDocBench 目录约定查找现成页面图。"""
+    """按既有页面图目录约定查找现成页面图。"""
     base = settings.images_dir
     if not base:
         return None
@@ -40,7 +40,7 @@ def _lookup_provided_page_image(doc_id: str, page_idx: int) -> Optional[str]:
 def _find_origin_pdf(doc_id: str) -> Optional[Path]:
     """在解析目录与原始 PDF 目录中定位文档 PDF。
 
-    优先级：原始 PDF（赛方原始文档）> MinerU 解析 layout.pdf（官方环境兜底，
+    优先级：原始 PDF > MinerU 解析 layout.pdf（兜底，
     仅用于页面图缺失时补充；随包发布的 index/pages/ 已渲染页优先于两者）。
     """
     cands: list[Path] = []

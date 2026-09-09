@@ -194,7 +194,7 @@ class Agent:
         sub_questions: List[str],
         include_images: bool,
     ) -> AnswerResult:
-        """对比题拆解：逐子问题检索+提取，再综合（借鉴 ERC 冠军的对比题分解思路）。"""
+        """对比题拆解：逐子问题检索+提取，再综合（对比题常需逐项比对后再归纳）。"""
         sub_results = []
         cited = []
         for sq in sub_questions:
@@ -263,9 +263,9 @@ class Agent:
         ) else 0.0
         rerank_on_elements = False
 
-        # 2. 图/表题：按题型分流视觉策略（P5 视觉 Router）：
+        # 2. 图/表题：按题型分流视觉策略（视觉 Router）：
         #    - image_only       → 走所选策略（crop/full_plus_crop/verify，读原图）
-        #    - table_required   → baseline 描述+markdown 证据（表格图片直读反而差，P7 再做低置信度 VLM 兜底）
+        #    - table_required   → baseline 描述+markdown 证据（表格图片直读反而差，低置信度时再做 VLM 兜底）
         #    - image_plus_text  → 常规页文本+整页图路径（需图文结合，元素捷径易误）
         #    - text_only        → 常规路径（仅在校验失败后 rescue 视觉策略）
         if not settings.no_image_mode:
