@@ -16,8 +16,13 @@ from .prompts import VERIFY_SYSTEM, verify_user
 
 _NUM_RE = re.compile(r"[-+]?\d[\d,]*\.?\d*")
 _MIN_SIG_DIGITS = 3
-_DIFF_WORDS = re.compile(r"\b(differ|difference|compare|comparison|versus|vs\.?|which (one|is))\b", re.I)
-_SAME_WORDS = re.compile(r"\b(no difference|not differ|the same|identical|similar to each other|both are)\b", re.I)
+_DIFF_WORDS = re.compile(
+    r"\b(differ|difference|compare|comparison|versus|vs\.?|which (one|is))\b", re.I
+)
+_SAME_WORDS = re.compile(
+    r"\b(no difference|not differ|the same|identical|similar to each other|both are)\b",
+    re.I,
+)
 
 
 def _contradicts_diff_question(question: str, answer: str) -> bool:
@@ -54,7 +59,11 @@ async def verify_answer(
 ) -> tuple[bool, str, str]:
     """返回 (supported, reason, missing)。数值不接地则直接判不通过并触发扩展。"""
     if _contradicts_diff_question(question, answer):
-        return False, "answer claims no difference for a difference/comparison question", ""
+        return (
+            False,
+            "answer claims no difference for a difference/comparison question",
+            "",
+        )
     full_ctx = _context_text(evidence)
     grounded, missing = numbers_grounded(answer, full_ctx)
     if not grounded:
