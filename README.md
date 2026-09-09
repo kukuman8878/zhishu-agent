@@ -169,14 +169,20 @@ zhishu-agent/
 
 ## 🚀 快速开始
 
-当前仓库已经包含一套可直接启动的本地开发环境，你可以按照以下顺序启动项目。
+> ⏱️ 全程约 20~40 分钟（大头在下载模型/拉镜像）。**不想折腾前端**的话，跑完第 8 步用 `curl` 就能体验问答了。
 
 ### 1. 准备环境
 
-- Python `>= 3.14`
-- `uv`
-- Docker 与 Docker Compose
-- Node.js 与 `pnpm`
+本项目需要 4 个工具，前 3 个是"跑起来必需"，最后一个（前端）可后装。逐个确认，**已装就跳过**：
+
+| 工具 | 是什么 | 怎么装 | 验证 |
+| ---- | ------ | ------ | ---- |
+| **Python 3.14** | 后端语言 | 官网 https://www.python.org/downloads/ | `python3 --version` |
+| **uv** | Python 包/环境管理器（快）| `curl -LsSf https://astral.sh/uv/install.sh \| sh` | `uv --version` |
+| **Docker** | 跑 MySQL/Qdrant/ES 等基础服务 | https://www.docker.com/products/docker-desktop/ | `docker --version` |
+| **Node + pnpm** | 前端（可选，跑前端才要）| 先装 Node https://nodejs.org 再 `npm i -g pnpm` | `node --version` / `pnpm --version` |
+
+> 国内网络提示：拉 Docker 镜像慢时，可配置国内镜像加速（`/etc/docker/daemon.json` 的 `registry-mirrors`）。
 
 ### 2. 克隆项目
 
@@ -191,52 +197,50 @@ cd zhishu-agent
 uv sync
 ```
 
+`uv sync` 会自动创建 `.venv` 虚拟环境并按 `pyproject.toml` + `uv.lock` 装好全部依赖。看到 `Installed ... packages` 即成功。
+
 ### 4. 配置大模型 API Key
+
+先复制模板，再填入真实密钥：
 
 ```bash
 cp .env.example .env
 ```
 
-把 `.env` 中的 `LLM_API_KEY` 替换成真实密钥：
+编辑 `.env`，把 `LLM_API_KEY` 换成你的密钥：
 
 ```bash
-LLM_API_KEY=your_real_api_key
+LLM_API_KEY=你的真实key
 ```
 
-默认配置使用兼容 OpenAI 接口的硅基流动服务：
+本项目默认对接**硅基流动**（SiliconFlow，国内可直连、注册送额度）：
 
 ```yaml
 llm:
-    model_name: Pro/zai-org/GLM-5.1
-    api_key: ${oc.env:LLM_API_KEY}
+    model_name: Pro/zai-org/GLM-5.1   # 主模型
+    chat_model_name: deepseek-ai/DeepSeek-V3   # 意图判别/闲聊（更便宜）
     base_url: https://api.siliconflow.cn/v1
 ```
 
-如需使用其他兼容 OpenAI API 的模型平台，修改 [conf/app_config.yaml](conf/app_config.yaml) 中的 `model_name` 和 `base_url`。
+> ⚠️ **新手最容易卡的一步**：`Pro/zai-org/GLM-5.1` 是特定模型，如果你的账号没开通它，换成人人能用的模型即可——把 `conf/app_config.yaml` 里 `model_name` 改成 `deepseek-ai/DeepSeek-V3`（硅基流动免费额度即可用）。改完需**重启后端**生效。
 
-> **关于默认模型**：示例中的 `Pro/zai-org/GLM-5.1` 是硅基流动上的特定模型，你的账号需有访问权限；若无权限，可在 `conf/app_config.yaml` 换成 `deepseek-ai/DeepSeek-V3` 等通用可用的模型。改动 `.env` / `conf/*.yaml` 后需**重启后端**生效（`.prompt` 模板改动则即时生效）。
->
-> **双模型说明**：`app/agent/llm.py` 隔离了两个模型——`llm`（主链路，temperature=0，用于召回/SQL 生成等）与 `chat_llm`（意图判别/闲聊/结果自检，用更便宜快速的模型，由 `llm.chat_model_name` 配置）。
+想用其它兼容 OpenAI 接口的平台（DeepSeek 官方、OpenAI、本地 vLLM 等），改 `conf/app_config.yaml` 的 `model_name` + `base_url` 就行。
 
-> 文档问答能力（可选）：若 `conf/app_config.yaml` 中 `doc_engine.enabled=true`，则还需在 `.env` 配置文档引擎的硅基流动密钥与索引目录（`SILICONFLOW_API_KEY`、`INDEX_DIR`、`CACHE_DIR` 等，详见 `.env.example`）。索引数据（`data/doc_index/`）不随仓库分发，未配置时 doc 路由自动降级为 message，sql/hybrid 的 SQL 侧结论不受影响。
+### 5. 下载 Embedding / 重排模型
 
-### 5. 准备 Embedding 模型
-
-项目通过 `TEI` 加载 `BAAI/bge-large-zh-v1.5`。模型文件体积较大，无法再仓库中进行提交，需要先下载到 Docker 挂载目录：
+智数用**本地向量模型**把中文转成向量（不走云端、免费）。模型较大不随仓库分发，需下载到挂载目录：
 
 ```bash
+# 词向量模型（约 1.3GB，用于召回）
 uv run hf download BAAI/bge-large-zh-v1.5 --local-dir docker/embedding/bge-large-zh-v1.5
-```
-
-如果手动下载，请解压到：`docker/embedding/bge-large-zh-v1.5`路径下。
-
-语义重排服务使用更小的 `BAAI/bge-reranker-base`（约 1.1GB），同样需要下载到挂载目录：
-
-```bash
+# 语义重排模型（约 1.1GB，用于精排，可选但推荐）
 uv run hf download BAAI/bge-reranker-base --local-dir docker/embedding/bge-reranker-base
 ```
 
-> 模型体积较大，未随仓库分发（`.gitignore` 排除了 `docker/embedding/`），请按上述命令在首次启动前准备。
+> 🌐 国内下载 HuggingFace 慢/失败时，加镜像环境变量重跑：
+> ```bash
+> HF_ENDPOINT=https://hf-mirror.com uv run hf download BAAI/bge-large-zh-v1.5 --local-dir docker/embedding/bge-large-zh-v1.5
+> ```
 
 ### 6. 启动 Docker 基础服务
 
@@ -244,30 +248,35 @@ uv run hf download BAAI/bge-reranker-base --local-dir docker/embedding/bge-reran
 docker compose -f docker/docker-compose.yaml up -d
 ```
 
-默认端口：
+这会启动 5 个容器：MySQL、Elasticsearch、Kibana、Qdrant、Embedding(TEI)。首次运行要拉镜像，耐心等。验证：
 
-| 服务          | 端口   |
-| ------------- | ------ |
-| MySQL         | `3306` |
-| Elasticsearch | `9200` |
-| Kibana        | `5601` |
-| Qdrant        | `6333` |
-| Embedding     | `8081` |
+```bash
+docker compose -f docker/docker-compose.yaml ps   # 全部显示 Up 即成功
+```
 
-> `docker/mysql/meta.sql` 和 `docker/mysql/dw.sql` 会在 MySQL 容器首次启动时自动初始化元数据库和教学数仓。
+> MySQL 容器**首次启动**会自动执行 `docker/mysql/*.sql`，建好 `meta`（元数据库）和 `dw`（教学数仓）两个库及样例数据。
 
 ### 7. 构建元数据知识库
+
+把教学数仓的表结构、字段、指标及其向量、真实取值写入 MySQL / Qdrant / Elasticsearch，供后续问数检索使用：
 
 ```bash
 uv run python -m app.scripts.build_meta_knowledge -c conf/meta_config.yaml
 ```
 
-这一步会把表字段元数据写入 MySQL，把字段和指标向量写入 Qdrant，并把字段真实取值写入 Elasticsearch。
+> ⚠️ 若报连接拒绝：**Docker 服务可能还没完全就绪**（尤其 Embedding 首次要加载 1.3GB 模型）。等 1~2 分钟再跑，或用 `curl http://localhost:8081/health` 确认返回 `ok`。
 
 ### 8. 启动后端
 
 ```bash
 uv run fastapi dev main.py
+```
+
+看到 `Uvicorn running on http://127.0.0.1:8000` 即成功。另开一个终端验证健康检查：
+
+```bash
+curl http://127.0.0.1:8000/health
+# 期望输出：{"status":"healthy","services":{... 全部 true}}
 ```
 
 后端接口：
@@ -314,7 +323,9 @@ pnpm install
 pnpm dev
 ```
 
-前端默认通过 Vite 代理把 `/api` 转发到 `http://127.0.0.1:8000`。如需修改：
+看到 `Local: http://localhost:5173/` 即成功，**浏览器打开 http://localhost:5173**，点一个样例问题试试。
+
+前端通过 Vite 代理把 `/api` 转发到后端。默认指向 `http://127.0.0.1:8000`，如需修改：
 
 ```bash
 cd frontend
@@ -324,6 +335,36 @@ cp .env.example .env
 ```bash
 VITE_DEV_PROXY_TARGET=http://127.0.0.1:8000
 ```
+
+改完重启 `pnpm dev`。
+
+### 🎯 跑通了，接下来可以试这些
+
+| 问题 | 期待看到 |
+| ---- | -------- |
+| `统计华北地区的销售总额` | 前端自上而下点亮流程图 → 结果表格 |
+| `华东地区订单数量是多少` | 数据结果 |
+| `你好，你是谁` | 闲聊回复（不带流程图）|
+
+## ❓ 常见问题（FAQ）
+
+**Q1：`uv` 或 `pnpm` 提示 command not found**
+安装后需重开终端，或用绝对路径。uv 安装到 `~/.local/bin`，可执行 `export PATH="$HOME/.local/bin:$PATH"`。
+
+**Q2：跑 SQL 时报"召回字段信息 failed" / 后端日志有 embedding 连接错误**
+`docker/embedding` 模型没下载或 TEI 未就绪。确认第 5 步下载完成、第 6 步容器 `Up`，并等 TEI 加载完模型（首次 1~2 分钟）。
+
+**Q3：`fastapi dev main.py` 报缺模块 / ModuleNotFoundError**
+没在项目根目录运行，或依赖没装全。回到项目根目录重新 `uv sync`。
+
+**Q4：问数据类问题返回"文档问答服务暂不可用"**
+这是**文档问答(doc 路由)**的降级提示——SQL 查询本身是好的。`doc/hybrid` 需要额外的文档引擎索引（见上方说明），纯数据问题请走 `sql` 路由，或确认提问不含"文档/手册"等词。
+
+**Q5：MySQL 连不上 / 密码错误**
+本地库账号默认 `didilili`/`dili123`（见 `conf/app_config.yaml`）。若之前跑过旧容器，数据可能残留，可 `docker compose -f docker/docker-compose.yaml down -v` 清空重建（会清掉已建的知识库，需重跑第 7 步）。
+
+**Q6：想让 SQL 更稳 / 想换更聪明的模型**
+把 `conf/app_config.yaml` 的 `model_name` 换成更强的模型；多轮追问会自动带上下文，无需额外配置。
 
 > 本项目基于尚硅谷「大模型智能体掌柜问数」项目，并在此基础上整理完善。
 
