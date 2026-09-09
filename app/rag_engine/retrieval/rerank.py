@@ -49,7 +49,9 @@ async def rerank_and_assemble(
         if not meta:
             continue
         if rerank_on_elements:
-            caps = " ".join(el.get("caption", "") for el in meta["elements"] if el.get("caption"))
+            caps = " ".join(
+                el.get("caption", "") for el in meta["elements"] if el.get("caption")
+            )
             texts.append(caps[:RERANK_TEXT_CHARS] or meta["text"][:RERANK_TEXT_CHARS])
         else:
             texts.append(meta["text"][:RERANK_TEXT_CHARS])
@@ -115,7 +117,12 @@ async def retrieve(
         fused = scope_to_docs(fused, doc_scope)
     elem_scores = dict(paths.get("element_dense", []))
     return await rerank_and_assemble(
-        query, query_vec, store, fused, top_k,
-        element_scores=elem_scores, element_weight=element_weight,
+        query,
+        query_vec,
+        store,
+        fused,
+        top_k,
+        element_scores=elem_scores,
+        element_weight=element_weight,
         rerank_on_elements=rerank_on_elements,
     )
