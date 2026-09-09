@@ -23,7 +23,7 @@ BBox = Tuple[float, float, float, float]  # (x0, y0, x1, y1) 归一化 0~1000
 def load_image(path: str | Path) -> Optional[Image.Image]:
     try:
         return Image.open(path).convert("RGB")
-    except (OSError, ValueError):
+    except OSError, ValueError:
         return None
 
 
