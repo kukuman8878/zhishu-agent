@@ -33,8 +33,16 @@ def parse_grid(table_html: str) -> List[List[str]]:
         row_cells = []
         for m in re.finditer(r"<(td|th)([^>]*)>(.*?)</\1>", tr, flags=re.I | re.S):
             attrs, body = m.group(2), m.group(3)
-            cs = int(_COLSPAN_RE.search(attrs).group(1)) if _COLSPAN_RE.search(attrs) else 1
-            rs = int(_ROWSPAN_RE.search(attrs).group(1)) if _ROWSPAN_RE.search(attrs) else 1
+            cs = (
+                int(_COLSPAN_RE.search(attrs).group(1))
+                if _COLSPAN_RE.search(attrs)
+                else 1
+            )
+            rs = (
+                int(_ROWSPAN_RE.search(attrs).group(1))
+                if _ROWSPAN_RE.search(attrs)
+                else 1
+            )
             row_cells.append({"text": _clean_cell(body), "colspan": cs, "rowspan": rs})
         cells.append(row_cells)
     n_rows = len(cells)
@@ -69,7 +77,16 @@ def _is_numeric(s: str) -> bool:
     return bool(re.fullmatch(r"[-+.,\d\s()%]*\d[-+.,\d\s()%]*", s))
 
 
-_STRUCT_WORDS = {"prediction", "predicted", "reference", "actual", "state", "class", "true", "label"}
+_STRUCT_WORDS = {
+    "prediction",
+    "predicted",
+    "reference",
+    "actual",
+    "state",
+    "class",
+    "true",
+    "label",
+}
 
 
 def _row_label(row: List[str]) -> Optional[Tuple[int, str]]:
@@ -188,7 +205,9 @@ def structured_is_clean(body_html: str) -> bool:
                 continue
             total += 1
             # 一个单元格里混了两个数字（如 '-13.5% 73,434 -86.2%'）→ 混排坏表
-            if len(re.findall(r"\d", v)) >= 4 and ("%" in v or len(re.findall(r"[\d,]+", v)) >= 2):
+            if len(re.findall(r"\d", v)) >= 4 and (
+                "%" in v or len(re.findall(r"[\d,]+", v)) >= 2
+            ):
                 bad += 1
     if total == 0:
         return False
