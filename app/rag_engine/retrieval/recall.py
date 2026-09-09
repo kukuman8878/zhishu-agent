@@ -37,13 +37,19 @@ class IndexStore:
             (self.dir / "doc_store.json").read_text(encoding="utf-8")
         )
         self.page_vdb = NanoVectorDB(
-            settings.embedding_dim, metric="cosine", storage_file=str(self.dir / "page_vectors.json")
+            settings.embedding_dim,
+            metric="cosine",
+            storage_file=str(self.dir / "page_vectors.json"),
         )
         self.element_vdb = NanoVectorDB(
-            settings.embedding_dim, metric="cosine", storage_file=str(self.dir / "element_vectors.json")
+            settings.embedding_dim,
+            metric="cosine",
+            storage_file=str(self.dir / "element_vectors.json"),
         )
         self.doc_vdb = NanoVectorDB(
-            settings.embedding_dim, metric="cosine", storage_file=str(self.dir / "doc_vectors.json")
+            settings.embedding_dim,
+            metric="cosine",
+            storage_file=str(self.dir / "doc_vectors.json"),
         )
         self.bm25_pages = BM25Index.load(self.dir / "bm25_pages.json")
         self.bm25_elements = BM25Index.load(self.dir / "bm25_elements.json")
@@ -59,7 +65,9 @@ class IndexStore:
         return f"{doc_id}|{pidx}"
 
 
-def _elem_to_page(elem_hits: List[Tuple[str, float]], store: IndexStore) -> List[Tuple[str, float]]:
+def _elem_to_page(
+    elem_hits: List[Tuple[str, float]], store: IndexStore
+) -> List[Tuple[str, float]]:
     out: Dict[str, float] = {}
     for elem_id, score in elem_hits:
         pkey = store.element_page(elem_id)
@@ -107,14 +115,20 @@ async def multi_path_recall(
     paths["page_bm25"] = store.bm25_pages.search(query, page_topk)
 
     # 元素稠密 + BM25 -> 父页
-    e_hits = store.element_vdb.query(np.array(query_vec, dtype=np.float32), top_k=element_topk)
+    e_hits = store.element_vdb.query(
+        np.array(query_vec, dtype=np.float32), top_k=element_topk
+    )
     paths["element_dense"] = _elem_to_page(
         [(h["__id__"], float(h["__metrics__"])) for h in e_hits], store
     )
-    paths["element_bm25"] = _elem_to_page(store.bm25_elements.search(query, element_topk), store)
+    paths["element_bm25"] = _elem_to_page(
+        store.bm25_elements.search(query, element_topk), store
+    )
 
     # 文档级（摘要向量 + BM25）-> 文档
-    d_hits = store.doc_vdb.query(np.array(query_vec, dtype=np.float32), top_k=settings.doc_topk)
+    d_hits = store.doc_vdb.query(
+        np.array(query_vec, dtype=np.float32), top_k=settings.doc_topk
+    )
     doc_cands = [(h["__id__"], float(h["__metrics__"])) for h in d_hits]
     for doc_id, _ in store.bm25_docs.search(query, settings.doc_topk):
         if doc_id not in {d for d, _ in doc_cands}:
