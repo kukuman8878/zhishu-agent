@@ -31,9 +31,13 @@ from .prompts_vlm import (
     verify_token_user,
 )
 
-_STAGE_HINT_RE = _re.compile(r"\b(stages?|steps?|sequence|phases?|cyclical|iterative)\b", _re.I)
+_STAGE_HINT_RE = _re.compile(
+    r"\b(stages?|steps?|sequence|phases?|cyclical|iterative)\b", _re.I
+)
 
-_QUOTED_RE = _re.compile(r"['\u2018\u2019]([A-Za-z][A-Za-z0-9 '-]{1,30})['\u2018\u2019](?=\s|$|,|\)|→)")
+_QUOTED_RE = _re.compile(
+    r"['\u2018\u2019]([A-Za-z][A-Za-z0-9 '-]{1,30})['\u2018\u2019](?=\s|$|,|\)|→)"
+)
 # 零宽 lookahead：允许相邻 pair 重叠（X followed by Y, then Z → (X,Y) 与 (Y,Z) 都要捕获）
 _FLOW_PAIR_RE = _re.compile(
     r"(?=("
@@ -84,9 +88,15 @@ _PER_ITEM_LOCATOR_EXTRA = (
     "Return ONE REGION PER ITEM (at most 4), so that every label/value can be read."
 )
 # 逐项数字题：问题要求列出每一项/每层的数值（如 each deposited layer → 各层厚度）
-_PER_ITEM_RE = _re.compile(r"\beach\b.*\b(layer|row|column|model|class|machine|panel)\b|\bper\s+(layer|item|row|column)\b", _re.I)
+_PER_ITEM_RE = _re.compile(
+    r"\beach\b.*\b(layer|row|column|model|class|machine|panel)\b|\bper\s+(layer|item|row|column)\b",
+    _re.I,
+)
 # 路径/流向题（如 "how does water flow from ... towards ..."）：必须读全图整条线
-_PATH_RE = _re.compile(r"\bwater\s+flow\w*\b|\bflows?\b.{0,100}\b(?:towards?|toward)\b|\bdirection\s+of\s+water\b", _re.I)
+_PATH_RE = _re.compile(
+    r"\bwater\s+flow\w*\b|\bflows?\b.{0,100}\b(?:towards?|toward)\b|\bdirection\s+of\s+water\b",
+    _re.I,
+)
 _PATH_READ_EXTRA = (
     " PATH/FLOW question: trace the arrow/line step by step from its starting label, through "
     "EVERY labeled area it passes by or through, to its endpoint. Report the ordered list "
@@ -99,9 +109,13 @@ _Z_PANEL_SYSTEM = (
     "You read values from a multi-panel line chart. The image is the source of truth. "
     "Output ONLY a JSON object."
 )
-_Z_ORD = {1: "first class", 2: "second class", 3: "third class", 4: "fourth class", 5: "fifth class"}
-
-
+_Z_ORD = {
+    1: "first class",
+    2: "second class",
+    3: "third class",
+    4: "fourth class",
+    5: "fifth class",
+}
 
 
 _Z_PANEL_USER = (
@@ -116,7 +130,7 @@ _Z_PANEL_USER = (
     "3) At that factor's x-position, read the small printed z-score value for EVERY line in "
     "EVERY panel (top panel first).\n"
     'Output ONLY JSON: {{"panels": [{{"panel": 1, "lines": {{"1/2": 0.0, "2/2": 0.0}}}}]}} '
-    "where each panel key is its position (1=top), and \"lines\" maps EVERY legend label to its value."
+    'where each panel key is its position (1=top), and "lines" maps EVERY legend label to its value.'
 )
 
 
@@ -143,10 +157,14 @@ _Z_PANEL_COL_USER = (
 
 
 def _z_factor_of(question: str) -> str:
-    m = _re.search(r"for\s+['\"\u2018\u2019]([^'\"\u2018\u2019]{3,60})['\"\u2018\u2019]", question)
+    m = _re.search(
+        r"for\s+['\"\u2018\u2019]([^'\"\u2018\u2019]{3,60})['\"\u2018\u2019]", question
+    )
     if m:
         return m.group(1).strip()
-    m = _re.search(r"for\s+([A-Z][^?]{3,60}?)\s+(?:across|distributed|per|in)", question)
+    m = _re.search(
+        r"for\s+([A-Z][^?]{3,60}?)\s+(?:across|distributed|per|in)", question
+    )
     return m.group(1).strip() if m else ""
 
 
@@ -169,7 +187,7 @@ def _z_parse_panels(raw: str):
         for lab, v in lines.items():
             try:
                 fv = float(v)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 continue
             m = _re.search(r"(\d+)\s*/", str(lab))
             order = int(m.group(1)) if m else 0
@@ -221,7 +239,9 @@ def _z_assign_last_panel(panels, extra_pool=None):
             new_items.append([order, lab, n, v])
         if len(assigned) != len(prev):
             return panels
-        remaining = sorted((c for c in pool if c not in assigned), key=lambda c: -pool[c])
+        remaining = sorted(
+            (c for c in pool if c not in assigned), key=lambda c: -pool[c]
+        )
         ri = 0
         for it in new_items:
             if ri < len(remaining) and (it[3] not in assigned):
@@ -265,6 +285,7 @@ async def _z_panel_answer(client, question: str, img) -> str:
         return ""
 
     from PIL import Image as _PILImage
+
     w, h = img.size
     bottom = img.crop((0, int(h * 0.68), w, h))
     bottom = bottom.resize((bottom.width * 2, bottom.height * 2), _PILImage.LANCZOS)
@@ -275,10 +296,16 @@ async def _z_panel_answer(client, question: str, img) -> str:
         return await client.infer(
             [
                 {"role": "system", "content": _Z_PANEL_SYSTEM},
-                {"role": "user", "content": [
-                    im.pil_message(img),
-                    {"type": "text", "text": _Z_PANEL_USER.format(question=question)},
-                ]},
+                {
+                    "role": "user",
+                    "content": [
+                        im.pil_message(img),
+                        {
+                            "type": "text",
+                            "text": _Z_PANEL_USER.format(question=question),
+                        },
+                    ],
+                },
             ],
             max_tokens=700,
         )
@@ -287,10 +314,16 @@ async def _z_panel_answer(client, question: str, img) -> str:
         return await client.infer(
             [
                 {"role": "system", "content": _Z_PANEL_SYSTEM},
-                {"role": "user", "content": [
-                    im.pil_message(bottom),
-                    {"type": "text", "text": _Z_PANEL_CROP_USER.format(question=question)},
-                ]},
+                {
+                    "role": "user",
+                    "content": [
+                        im.pil_message(bottom),
+                        {
+                            "type": "text",
+                            "text": _Z_PANEL_CROP_USER.format(question=question),
+                        },
+                    ],
+                },
             ],
             max_tokens=400,
         )
@@ -299,10 +332,16 @@ async def _z_panel_answer(client, question: str, img) -> str:
         return await client.infer(
             [
                 {"role": "system", "content": _Z_PANEL_SYSTEM},
-                {"role": "user", "content": [
-                    im.pil_message(left),
-                    {"type": "text", "text": _Z_PANEL_COL_USER.format(question=question)},
-                ]},
+                {
+                    "role": "user",
+                    "content": [
+                        im.pil_message(left),
+                        {
+                            "type": "text",
+                            "text": _Z_PANEL_COL_USER.format(question=question),
+                        },
+                    ],
+                },
             ],
             max_tokens=300,
         )
@@ -330,7 +369,9 @@ async def _z_panel_answer(client, question: str, img) -> str:
                 if isinstance(d3, dict):
                     v3 = d3.get("values") or []
                     if isinstance(v3, list):
-                        extra_pool.extend(float(x) for x in v3 if isinstance(x, (int, float)))
+                        extra_pool.extend(
+                            float(x) for x in v3 if isinstance(x, (int, float))
+                        )
             except Exception:
                 pass
     except Exception:
@@ -355,7 +396,11 @@ async def _z_panel_answer(client, question: str, img) -> str:
 def _valid_stage(it: str) -> bool:
     """阶段词校验：1-3 词、至少一个大写字母、无数字（过滤 'log file'、'Web Down' 等噪音）。"""
     ws = it.split()
-    return 1 <= len(ws) <= 3 and not any(ch.isdigit() for ch in it) and any(ch.isupper() for ch in it)
+    return (
+        1 <= len(ws) <= 3
+        and not any(ch.isdigit() for ch in it)
+        and any(ch.isupper() for ch in it)
+    )
 
 
 def enforce_completeness(parsed: dict, question: str) -> dict:
@@ -376,7 +421,7 @@ def enforce_completeness(parsed: dict, question: str) -> dict:
             parsed["answer"] = "The sequence is: " + ", ".join(seq) + "."
             try:
                 parsed["confidence"] = max(float(parsed.get("confidence", 0.0)), 0.7)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 parsed["confidence"] = 0.7
             return parsed
     # 兜底：evidence 引号项（顺序保持首次出现，过滤含数字/process 的项+阶段词校验）
@@ -400,7 +445,7 @@ def enforce_completeness(parsed: dict, question: str) -> dict:
     parsed["answer"] = "The sequence is: " + ", ".join(items) + "."
     try:
         parsed["confidence"] = max(float(parsed.get("confidence", 0.0)), 0.7)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         parsed["confidence"] = 0.7
     return parsed
 
@@ -411,10 +456,10 @@ class StrategyResult:
     confidence: float = 0.0
     needs_verification: bool = False
     ocr_corrected: bool = False
-    vlm_outputs: list = field(default_factory=list)   # [{stage, image, output}]
+    vlm_outputs: list = field(default_factory=list)  # [{stage, image, output}]
     selected_images: list = field(default_factory=list)
     crop_images: list = field(default_factory=list)
-    cited_pages: list = field(default_factory=list)   # 1 基页码
+    cited_pages: list = field(default_factory=list)  # 1 基页码
     evidence_pages: list = field(default_factory=list)  # 父页 dict 列表
     chosen_page: dict = field(default=None)  # 最终采用的元素所在页（verify 复核用）
 
@@ -433,7 +478,7 @@ def _parse_visual_json(raw: str) -> dict:
     conf = data.get("confidence", 0.0)
     try:
         conf = float(conf)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         conf = 0.0
     nv = bool(data.get("needs_verification", False))
     return {
@@ -442,7 +487,9 @@ def _parse_visual_json(raw: str) -> dict:
         "needs_verification": nv,
         "evidence": str(data.get("evidence", "")).strip(),
         "region": str(data.get("region", "")).strip(),
-        "observations": data.get("observations", []) if isinstance(data.get("observations"), list) else [],
+        "observations": data.get("observations", [])
+        if isinstance(data.get("observations"), list)
+        else [],
     }
 
 
@@ -461,10 +508,16 @@ def _desc_hint(el: dict) -> str:
     caption = el.get("caption", "") or (el.get("body", "")[:200])
     desc = el.get("description", "")
     head = f"Caption: {caption}" if caption else ""
-    return (head + "\nDescription hint (may contain errors): " + desc[:800]) if desc else head
+    return (
+        (head + "\nDescription hint (may contain errors): " + desc[:800])
+        if desc
+        else head
+    )
 
 
-def _render_crop(page: dict, bbox: List[float], workdir: str, tag: str) -> Optional[object]:
+def _render_crop(
+    page: dict, bbox: List[float], workdir: str, tag: str
+) -> Optional[object]:
     """从原始 PDF 高 DPI 重渲染区域；无 PDF 时回退 页面图裁剪 + 放大。返回 PIL 图。"""
     from ..builders.page_image import _find_origin_pdf
 
@@ -531,20 +584,23 @@ class BaselineStrategy(ImageStrategy):
 
     name = "baseline"
 
-    async def answer_visual(self, question, elements, route, store, client, sample_id="", workdir=""):
+    async def answer_visual(
+        self, question, elements, route, store, client, sample_id="", workdir=""
+    ):
         from ..agent.prompts import IMAGE_DESC_ANSWER_SYSTEM
         from . import table_parse as tp
         from .prompts_vlm import TABLE_STRUCT_SYSTEM
 
-        has_struct = (
-            any(
-                el.get("kind") == "table" and el.get("body") and tp.structured_is_clean(el["body"])
-                for el, _, _ in elements
-            )
-            and not any(
-                el.get("kind") == "table" and el.get("body") and not tp.structured_is_clean(el["body"])
-                for el, _, _ in elements
-            )
+        has_struct = any(
+            el.get("kind") == "table"
+            and el.get("body")
+            and tp.structured_is_clean(el["body"])
+            for el, _, _ in elements
+        ) and not any(
+            el.get("kind") == "table"
+            and el.get("body")
+            and not tp.structured_is_clean(el["body"])
+            for el, _, _ in elements
         )
         system = TABLE_STRUCT_SYSTEM if has_struct else IMAGE_DESC_ANSWER_SYSTEM
 
@@ -559,9 +615,17 @@ class BaselineStrategy(ImageStrategy):
             if kind == "table" and el.get("body"):
                 from . import table_parse as tp
 
-                struct = tp.structured_table_evidence(el["body"]) if tp.structured_is_clean(el["body"]) else ""
+                struct = (
+                    tp.structured_table_evidence(el["body"])
+                    if tp.structured_is_clean(el["body"])
+                    else ""
+                )
                 if struct:
-                    aux = f"\nDescription (auxiliary, may contain errors): {desc[:600]}" if desc else ""
+                    aux = (
+                        f"\nDescription (auxiliary, may contain errors): {desc[:600]}"
+                        if desc
+                        else ""
+                    )
                     desc_parts.append(
                         f"### Table {i + 1} [page {page_no} of {doc_id}]\n"
                         f"Caption: {caption}\n"
@@ -582,10 +646,17 @@ class BaselineStrategy(ImageStrategy):
                 desc_parts.append(
                     f"### Figure/table {i + 1} [{kind} on page {page_no} of {doc_id}]\nCaption: {caption}"
                 )
-            img_msgs.append({"type": "text", "text": f"[Image for figure/table {i + 1}, page {page_no}]"})
+            img_msgs.append(
+                {
+                    "type": "text",
+                    "text": f"[Image for figure/table {i + 1}, page {page_no}]",
+                }
+            )
             img_msgs.append(api_client.image_message(el["img_path"]))
             sel.append(el["img_path"])
-            ctx_parts.append(f"--- Page {page_no} ({doc_id}) ---\n{page.get('text', '')[:1200]}")
+            ctx_parts.append(
+                f"--- Page {page_no} ({doc_id}) ---\n{page.get('text', '')[:1200]}"
+            )
 
         user_text = (
             "Here are the retrieved figures/tables with their descriptions:\n\n"
@@ -597,16 +668,24 @@ class BaselineStrategy(ImageStrategy):
             + "Answer using the descriptions as primary evidence."
         )
         raw = await client.infer(
-            [{"role": "system", "content": system},
-             {"role": "user", "content": img_msgs + [{"type": "text", "text": user_text}]}],
+            [
+                {"role": "system", "content": system},
+                {
+                    "role": "user",
+                    "content": img_msgs + [{"type": "text", "text": user_text}],
+                },
+            ],
             max_tokens=settings.answer_max_tokens,
         )
         parsed = _parse_visual_json(raw)
         return self._result(
-            parsed["answer"], elements,
+            parsed["answer"],
+            elements,
             confidence=parsed["confidence"],
             needs_verification=parsed["needs_verification"],
-            vlm_outputs=[{"stage": "baseline_desc_primary", "image": sel, "output": raw[:2000]}],
+            vlm_outputs=[
+                {"stage": "baseline_desc_primary", "image": sel, "output": raw[:2000]}
+            ],
             selected_images=sel,
         )
 
@@ -622,7 +701,11 @@ class _RegionReadMixin:
             raw,
         ):
             vals = [float(m.group(i)) for i in range(1, 5)]
-            if all(0 <= v <= 1000 for v in vals) and vals[2] > vals[0] and vals[3] > vals[1]:
+            if (
+                all(0 <= v <= 1000 for v in vals)
+                and vals[2] > vals[0]
+                and vals[3] > vals[1]
+            ):
                 regions.append(vals)
             if len(regions) >= max(n_regions, 1):
                 break
@@ -631,32 +714,53 @@ class _RegionReadMixin:
     def _dedup_regions(self, regions: List[List[float]]) -> List[List[float]]:
         uniq: List[List[float]] = []
         for r in regions:
-            if not any(
-                all(abs(r[i] - u[i]) < 8 for i in range(4)) for u in uniq
-            ):
+            if not any(all(abs(r[i] - u[i]) < 8 for i in range(4)) for u in uniq):
                 uniq.append(r)
         return uniq
 
     async def _locate(
         self, client: api_client.VLMClient, question: str, page_img, n_regions: int
     ) -> List[List[float]]:
-        regions = await self._locate_once(client, question, page_img, n_regions, REGION_LOCATOR_SYSTEM)
+        regions = await self._locate_once(
+            client, question, page_img, n_regions, REGION_LOCATOR_SYSTEM
+        )
         if not regions:
             # 简化 prompt 重试一次（防模型输出退化/格式失败）
-            regions = await self._locate_once(client, question, page_img, 1, RETRY_LOCATOR_SYSTEM)
+            regions = await self._locate_once(
+                client, question, page_img, 1, RETRY_LOCATOR_SYSTEM
+            )
         return regions
 
     async def _locate_once(
-        self, client: api_client.VLMClient, question: str, page_img, n_regions: int, system: str
+        self,
+        client: api_client.VLMClient,
+        question: str,
+        page_img,
+        n_regions: int,
+        system: str,
     ) -> List[List[float]]:
         msgs = [
             {"role": "system", "content": system},
-            {"role": "user", "content": [
-                im.pil_message(page_img),
-                {"type": "text", "text": region_locator_user(question)
-                 + (_STAGE_LOCATOR_EXTRA if _STAGE_HINT_RE.search(question or "") else "")
-                 + (_PER_ITEM_LOCATOR_EXTRA if _PER_ITEM_RE.search(question or "") else "")},
-            ]},
+            {
+                "role": "user",
+                "content": [
+                    im.pil_message(page_img),
+                    {
+                        "type": "text",
+                        "text": region_locator_user(question)
+                        + (
+                            _STAGE_LOCATOR_EXTRA
+                            if _STAGE_HINT_RE.search(question or "")
+                            else ""
+                        )
+                        + (
+                            _PER_ITEM_LOCATOR_EXTRA
+                            if _PER_ITEM_RE.search(question or "")
+                            else ""
+                        ),
+                    },
+                ],
+            },
         ]
         raw = await client.infer(msgs, max_tokens=300)
         regions: List[List[float]] = []
@@ -668,9 +772,13 @@ class _RegionReadMixin:
                     if isinstance(r, (list, tuple)) and len(r) == 4:
                         try:
                             vals = [float(v) for v in r]
-                            if all(0 <= v <= 1000 for v in vals) and vals[2] > vals[0] and vals[3] > vals[1]:
+                            if (
+                                all(0 <= v <= 1000 for v in vals)
+                                and vals[2] > vals[0]
+                                and vals[3] > vals[1]
+                            ):
                                 regions.append(vals)
-                        except (TypeError, ValueError):
+                        except TypeError, ValueError:
                             continue
         if not regions:
             regions = self._salvage_regions(raw, n_regions)
@@ -702,10 +810,16 @@ class _RegionReadMixin:
         path_text = _PATH_READ_EXTRA if _PATH_RE.search(question or "") else ""
         msgs = [
             {"role": "system", "content": CROP_READ_SYSTEM},
-            {"role": "user", "content": [
-                im.pil_message(crop),
-                {"type": "text", "text": f'Question: "{question}"{hint_text}{stage_text}{path_text}'},
-            ]},
+            {
+                "role": "user",
+                "content": [
+                    im.pil_message(crop),
+                    {
+                        "type": "text",
+                        "text": f'Question: "{question}"{hint_text}{stage_text}{path_text}',
+                    },
+                ],
+            },
         ]
         raw = await client.infer(msgs, max_tokens=800)
         parsed = _parse_visual_json(raw)
@@ -713,19 +827,34 @@ class _RegionReadMixin:
         return parsed, raw
 
     async def _read_full_plus(
-        self, client: api_client.VLMClient, question: str, full_img, crops: List[object], hint: str
+        self,
+        client: api_client.VLMClient,
+        question: str,
+        full_img,
+        crops: List[object],
+        hint: str,
     ) -> tuple[dict, str]:
         hint_text = f"\n\nOrientation hint (may contain errors): {hint}" if hint else ""
-        content = [im.pil_message(full_img), {"type": "text", "text": "[Full page image above]"}]
+        content = [
+            im.pil_message(full_img),
+            {"type": "text", "text": "[Full page image above]"},
+        ]
         for i, c in enumerate(crops):
             content.append(im.pil_message(c))
             content.append({"type": "text", "text": f"[Zoomed crop {i + 1} above]"})
-        content.append({"type": "text", "text": f'Question: "{question}"{hint_text}'
-                       + (_STAGE_READ_EXTRA if _STAGE_HINT_RE.search(question or "") else "")
-                       + (_PATH_READ_EXTRA if _PATH_RE.search(question or "") else "")})
+        content.append(
+            {
+                "type": "text",
+                "text": f'Question: "{question}"{hint_text}'
+                + (_STAGE_READ_EXTRA if _STAGE_HINT_RE.search(question or "") else "")
+                + (_PATH_READ_EXTRA if _PATH_RE.search(question or "") else ""),
+            }
+        )
         raw = await client.infer(
-            [{"role": "system", "content": FULL_PLUS_CROP_SYSTEM},
-             {"role": "user", "content": content}],
+            [
+                {"role": "system", "content": FULL_PLUS_CROP_SYSTEM},
+                {"role": "user", "content": content},
+            ],
             max_tokens=800,
         )
         parsed = _parse_visual_json(raw)
@@ -738,7 +867,9 @@ class CropStrategy(_RegionReadMixin, ImageStrategy):
 
     name = "crop"
 
-    async def answer_visual(self, question, elements, route, store, client, sample_id="", workdir=""):
+    async def answer_visual(
+        self, question, elements, route, store, client, sample_id="", workdir=""
+    ):
         el, page, _ = elements[0]
         full = im.load_image(page.get("page_image", ""))
         vlm_out, crops = [], []
@@ -746,16 +877,34 @@ class CropStrategy(_RegionReadMixin, ImageStrategy):
             return self._result("NOT_FOUND", elements)
         full = im.smart_resize(full)
         regions = await self._locate(client, question, full, 1)
-        vlm_out.append({"stage": "region_locate", "image": page.get("page_image", ""), "output": f"{len(regions)} regions"})
-        crop = await self._crop_with_fallback(page, el, regions, workdir, f"{sample_id}_crop")
+        vlm_out.append(
+            {
+                "stage": "region_locate",
+                "image": page.get("page_image", ""),
+                "output": f"{len(regions)} regions",
+            }
+        )
+        crop = await self._crop_with_fallback(
+            page, el, regions, workdir, f"{sample_id}_crop"
+        )
         if crop is None:
             return self._result("NOT_FOUND", elements)
         crops.append(regions[0] if regions else [])
-        parsed, raw = await self._read_crop(client, question, crop, _desc_hint(el), "crop")
-        vlm_out.append({"stage": "crop_read", "image": f"{sample_id}_crop.jpg", "output": raw[:2000]})
+        parsed, raw = await self._read_crop(
+            client, question, crop, _desc_hint(el), "crop"
+        )
+        vlm_out.append(
+            {
+                "stage": "crop_read",
+                "image": f"{sample_id}_crop.jpg",
+                "output": raw[:2000],
+            }
+        )
         return self._result(
-            parsed["answer"], elements,
-            confidence=parsed["confidence"], needs_verification=parsed["needs_verification"],
+            parsed["answer"],
+            elements,
+            confidence=parsed["confidence"],
+            needs_verification=parsed["needs_verification"],
             vlm_outputs=vlm_out,
             selected_images=[page.get("page_image", ""), el.get("img_path", "")],
             crop_images=crops,
@@ -767,7 +916,9 @@ class MultiCropStrategy(_RegionReadMixin, ImageStrategy):
 
     name = "multi_crop"
 
-    async def answer_visual(self, question, elements, route, store, client, sample_id="", workdir=""):
+    async def answer_visual(
+        self, question, elements, route, store, client, sample_id="", workdir=""
+    ):
         el, page, _ = elements[0]
         full = im.load_image(page.get("page_image", ""))
         vlm_out, crops = [], []
@@ -775,14 +926,30 @@ class MultiCropStrategy(_RegionReadMixin, ImageStrategy):
             return self._result("NOT_FOUND", elements)
         full = im.smart_resize(full)
         regions = await self._locate(client, question, full, 4)
-        vlm_out.append({"stage": "region_locate", "image": page.get("page_image", ""), "output": f"{len(regions)} regions"})
+        vlm_out.append(
+            {
+                "stage": "region_locate",
+                "image": page.get("page_image", ""),
+                "output": f"{len(regions)} regions",
+            }
+        )
         reads = []
         if not regions:
-            crop = await self._crop_with_fallback(page, el, [], workdir, f"{sample_id}_crop1")
+            crop = await self._crop_with_fallback(
+                page, el, [], workdir, f"{sample_id}_crop1"
+            )
             if crop is not None:
                 crops.append([])
-                parsed, raw = await self._read_crop(client, question, crop, _desc_hint(el), "crop1")
-                vlm_out.append({"stage": "crop_read_1", "image": f"{sample_id}_crop1.jpg", "output": raw[:2000]})
+                parsed, raw = await self._read_crop(
+                    client, question, crop, _desc_hint(el), "crop1"
+                )
+                vlm_out.append(
+                    {
+                        "stage": "crop_read_1",
+                        "image": f"{sample_id}_crop1.jpg",
+                        "output": raw[:2000],
+                    }
+                )
                 reads.append(parsed)
         for i, bbox in enumerate(regions[:4]):
             crop = _render_crop(page, bbox, workdir, f"{sample_id}_crop{i + 1}")
@@ -790,8 +957,16 @@ class MultiCropStrategy(_RegionReadMixin, ImageStrategy):
                 continue
             crop = im.upscale(crop)
             crops.append(bbox)
-            parsed, raw = await self._read_crop(client, question, crop, _desc_hint(el), f"crop{i + 1}")
-            vlm_out.append({"stage": f"crop_read_{i + 1}", "image": f"{sample_id}_crop{i + 1}.jpg", "output": raw[:2000]})
+            parsed, raw = await self._read_crop(
+                client, question, crop, _desc_hint(el), f"crop{i + 1}"
+            )
+            vlm_out.append(
+                {
+                    "stage": f"crop_read_{i + 1}",
+                    "image": f"{sample_id}_crop{i + 1}.jpg",
+                    "output": raw[:2000],
+                }
+            )
             reads.append(parsed)
         if not reads:
             return self._result("NOT_FOUND", elements)
@@ -805,16 +980,24 @@ class MultiCropStrategy(_RegionReadMixin, ImageStrategy):
             )
             agg_raw = await client.infer(
                 [
-                    {"role": "system", "content": "Combine per-panel readings into ONE final answer for the original "
-                     "question. Keep exact numbers and their panel/model labels. If readings conflict, prefer the "
-                     "one with higher confidence. If panels were read top-to-bottom, label them one-class / "
-                     "two-class / three-class / four-class model in that order. "
-                     "Output ONLY JSON: {\"answer\": \"...\", \"confidence\": 0.0}"},
-                    {"role": "user", "content": f'Question: "{question}"\n\nReadings (top-to-bottom panels):\n{parts}'},
+                    {
+                        "role": "system",
+                        "content": "Combine per-panel readings into ONE final answer for the original "
+                        "question. Keep exact numbers and their panel/model labels. If readings conflict, prefer the "
+                        "one with higher confidence. If panels were read top-to-bottom, label them one-class / "
+                        "two-class / three-class / four-class model in that order. "
+                        'Output ONLY JSON: {"answer": "...", "confidence": 0.0}',
+                    },
+                    {
+                        "role": "user",
+                        "content": f'Question: "{question}"\n\nReadings (top-to-bottom panels):\n{parts}',
+                    },
                 ],
                 max_tokens=600,
             )
-            vlm_out.append({"stage": "aggregate", "image": "", "output": agg_raw[:2000]})
+            vlm_out.append(
+                {"stage": "aggregate", "image": "", "output": agg_raw[:2000]}
+            )
             agg = api_client.extract_json(agg_raw)
             if isinstance(agg, dict) and agg.get("answer"):
                 best = {
@@ -828,8 +1011,10 @@ class MultiCropStrategy(_RegionReadMixin, ImageStrategy):
             else:
                 best = max(reads, key=lambda r: r["confidence"])
         return self._result(
-            best["answer"], elements,
-            confidence=best["confidence"], needs_verification=any(r["needs_verification"] for r in reads),
+            best["answer"],
+            elements,
+            confidence=best["confidence"],
+            needs_verification=any(r["needs_verification"] for r in reads),
             vlm_outputs=vlm_out,
             selected_images=[page.get("page_image", ""), el.get("img_path", "")],
             crop_images=crops,
@@ -850,15 +1035,16 @@ class FullPlusCropStrategy(_RegionReadMixin, ImageStrategy):
         if len(elements) < 2:
             return elements[:1]
         first, second = elements[0], elements[1]
-        same_page = (
-            first[1].get("doc_id") == second[1].get("doc_id")
-            and first[1].get("page_idx") == second[1].get("page_idx")
-        )
+        same_page = first[1].get("doc_id") == second[1].get("doc_id") and first[1].get(
+            "page_idx"
+        ) == second[1].get("page_idx")
         if second[2] >= first[2] - 0.03 and not same_page:
             return [first, second]
         return [first]
 
-    async def answer_visual(self, question, elements, route, store, client, sample_id="", workdir=""):
+    async def answer_visual(
+        self, question, elements, route, store, client, sample_id="", workdir=""
+    ):
         # z-score 多面板题快路径（时延优化）：通用读取+定位只覆盖 4/10 值且会被
         # 面板定向读取覆盖——直接对首个候选元素做三读并行 + 锚定，跳过定位/整图读
         if _Z_PANEL_RE.search(question or ""):
@@ -872,10 +1058,20 @@ class FullPlusCropStrategy(_RegionReadMixin, ImageStrategy):
                     z_ans = await _z_panel_answer(zc, question, z_img)
                     if z_ans:
                         res = self._result(
-                            z_ans, elements, confidence=0.8,
-                            vlm_outputs=[{"stage": "z_panel_read", "image": el.get("img_path", ""),
-                                          "output": z_ans[:300]}],
-                            selected_images=[page.get("page_image", ""), el.get("img_path", "")],
+                            z_ans,
+                            elements,
+                            confidence=0.8,
+                            vlm_outputs=[
+                                {
+                                    "stage": "z_panel_read",
+                                    "image": el.get("img_path", ""),
+                                    "output": z_ans[:300],
+                                }
+                            ],
+                            selected_images=[
+                                page.get("page_image", ""),
+                                el.get("img_path", ""),
+                            ],
                             chosen_page=page,
                         )
                         res.ocr_corrected = True
@@ -904,31 +1100,68 @@ class FullPlusCropStrategy(_RegionReadMixin, ImageStrategy):
                     el_img = im.upscale(el_img, 2)
                 read_crops = [el_img] if el_img is not None else []
                 regions = []
-                vlm_out.append({"stage": f"region_locate_{ci + 1}", "image": page.get("page_image", ""), "output": "element image (per-item/path)"})
+                vlm_out.append(
+                    {
+                        "stage": f"region_locate_{ci + 1}",
+                        "image": page.get("page_image", ""),
+                        "output": "element image (per-item/path)",
+                    }
+                )
             else:
                 regions = await self._locate(client, question, full_small, 1)
-                vlm_out.append({"stage": f"region_locate_{ci + 1}", "image": page.get("page_image", ""), "output": f"{len(regions)} regions"})
+                vlm_out.append(
+                    {
+                        "stage": f"region_locate_{ci + 1}",
+                        "image": page.get("page_image", ""),
+                        "output": f"{len(regions)} regions",
+                    }
+                )
                 read_crops = []
                 for ri, bbox in enumerate(regions[:1]):
-                    c = _render_crop(page, bbox, workdir, f"{sample_id}_crop{ci + 1}_{ri + 1}") if regions else None
+                    c = (
+                        _render_crop(
+                            page, bbox, workdir, f"{sample_id}_crop{ci + 1}_{ri + 1}"
+                        )
+                        if regions
+                        else None
+                    )
                     if c is None:
-                        c = await self._crop_with_fallback(page, el, [bbox], workdir, f"{sample_id}_crop{ci + 1}_{ri + 1}")
+                        c = await self._crop_with_fallback(
+                            page,
+                            el,
+                            [bbox],
+                            workdir,
+                            f"{sample_id}_crop{ci + 1}_{ri + 1}",
+                        )
                     if c is not None:
                         read_crops.append(c)
             if not read_crops:
                 continue
-            parsed, raw = await self._read_full_plus(client, question, full_small, read_crops, _desc_hint(el))
-            vlm_out.append({"stage": f"full_plus_crop_{ci + 1}", "image": f"{sample_id}_crop{ci + 1}.jpg", "output": raw[:2000]})
+            parsed, raw = await self._read_full_plus(
+                client, question, full_small, read_crops, _desc_hint(el)
+            )
+            vlm_out.append(
+                {
+                    "stage": f"full_plus_crop_{ci + 1}",
+                    "image": f"{sample_id}_crop{ci + 1}.jpg",
+                    "output": raw[:2000],
+                }
+            )
             if best_parsed is None or parsed["confidence"] > best_parsed["confidence"]:
                 best_parsed, best_el = parsed, (el, page)
                 crops = [list(r) for r in regions[:n_regions]]
         if best_parsed is None or best_el is None:
             return self._result("NOT_FOUND", elements)
         res = self._result(
-            best_parsed["answer"], elements,
-            confidence=best_parsed["confidence"], needs_verification=best_parsed["needs_verification"],
+            best_parsed["answer"],
+            elements,
+            confidence=best_parsed["confidence"],
+            needs_verification=best_parsed["needs_verification"],
             vlm_outputs=vlm_out,
-            selected_images=[best_el[1].get("page_image", ""), best_el[0].get("img_path", "")],
+            selected_images=[
+                best_el[1].get("page_image", ""),
+                best_el[0].get("img_path", ""),
+            ],
             crop_images=crops,
             chosen_page=best_el[1],
         )
@@ -942,7 +1175,13 @@ class FullPlusCropStrategy(_RegionReadMixin, ImageStrategy):
                     zc = api_client.VLMClient(model=settings.llm_model_visual)
                     z_ans = await _z_panel_answer(zc, question, z_img)
                     if z_ans:
-                        vlm_out.append({"stage": "z_panel_read", "image": best_el[0].get("img_path", ""), "output": z_ans[:300]})
+                        vlm_out.append(
+                            {
+                                "stage": "z_panel_read",
+                                "image": best_el[0].get("img_path", ""),
+                                "output": z_ans[:300],
+                            }
+                        )
                         res.answer = z_ans
                         res.confidence = 0.8
                         res.ocr_corrected = True
@@ -964,11 +1203,14 @@ class VerifyStrategy(FullPlusCropStrategy):
     async def _composite_crops(self, page, el, regions, workdir, tag):
         """多个定位区域 → 纵向拼接成一张复核图（逐项数字题的每个标签都要复核）。"""
         from PIL import Image as _PILImage
+
         imgs = []
         for i, bbox in enumerate((regions or [])[:4]):
             c = _render_crop(page, bbox, workdir, f"{tag}_{i + 1}") if bbox else None
             if c is None:
-                c = await self._crop_with_fallback(page, el, [bbox], workdir, f"{tag}_{i + 1}")
+                c = await self._crop_with_fallback(
+                    page, el, [bbox], workdir, f"{tag}_{i + 1}"
+                )
             if c is not None:
                 imgs.append(c)
         if not imgs:
@@ -985,8 +1227,12 @@ class VerifyStrategy(FullPlusCropStrategy):
             im.save_jpeg(comp, Path(workdir) / "crops" / f"{tag}.jpg")
         return comp
 
-    async def answer_visual(self, question, elements, route, store, client, sample_id="", workdir=""):
-        res = await super().answer_visual(question, elements, route, store, client, sample_id, workdir)
+    async def answer_visual(
+        self, question, elements, route, store, client, sample_id="", workdir=""
+    ):
+        res = await super().answer_visual(
+            question, elements, route, store, client, sample_id, workdir
+        )
         if getattr(res, "ocr_corrected", False):
             # OCR 列聚类已确定性纠正（独立读数），LLM 复核不再覆盖
             return res
@@ -997,32 +1243,50 @@ class VerifyStrategy(FullPlusCropStrategy):
         critical = vt.extract_critical(question) or vt.extract_critical(res.answer)
         desc_critical = vt.extract_critical(el.get("description", ""))
         # 描述与首次读数冲突也触发复核
-        conflict = any(
-            not any(vt.reads_agree(a, d) for d in desc_critical) for a in vt.extract_critical(res.answer)
-        ) if desc_critical and vt.extract_critical(res.answer) else False
+        conflict = (
+            any(
+                not any(vt.reads_agree(a, d) for d in desc_critical)
+                for a in vt.extract_critical(res.answer)
+            )
+            if desc_critical and vt.extract_critical(res.answer)
+            else False
+        )
         if not critical and not conflict:
             return res
         full = im.load_image(page.get("page_image", ""))
         if full is None:
             return res
         regions = res.crop_images or []
-        crop = await self._composite_crops(page, el, regions, workdir, f"{sample_id}_verify")
+        crop = await self._composite_crops(
+            page, el, regions, workdir, f"{sample_id}_verify"
+        )
         if crop is None:
-            crop = await self._crop_with_fallback(page, el, regions, workdir, f"{sample_id}_verify")
+            crop = await self._crop_with_fallback(
+                page, el, regions, workdir, f"{sample_id}_verify"
+            )
         if crop is None:
             return res
         cands = "\n".join(f"- {t}" for t in (critical or desc_critical)[:8])
         msgs = [
             {"role": "system", "content": VERIFY_TOKEN_SYSTEM},
-            {"role": "user", "content": [
-                im.pil_message(crop),
-                {"type": "text", "text": verify_token_user(res.answer, cands)},
-            ]},
+            {
+                "role": "user",
+                "content": [
+                    im.pil_message(crop),
+                    {"type": "text", "text": verify_token_user(res.answer, cands)},
+                ],
+            },
         ]
         readings = [res.answer]
         for rnd in range(settings.verify_max_rounds):
             raw = await client.infer(msgs, max_tokens=200)
-            res.vlm_outputs.append({"stage": f"verify_{rnd + 1}", "image": f"{sample_id}_verify.jpg", "output": raw[:500]})
+            res.vlm_outputs.append(
+                {
+                    "stage": f"verify_{rnd + 1}",
+                    "image": f"{sample_id}_verify.jpg",
+                    "output": raw[:500],
+                }
+            )
             data = api_client.extract_json(raw)
             if isinstance(data, dict):
                 val = str(data.get("value", "")).strip()
@@ -1040,28 +1304,45 @@ class VerifyStrategy(FullPlusCropStrategy):
                 last = readings[-1]
                 if not vt.reads_agree(last, res.answer):
                     # 复核值与描述候选一致 → 以描述候选为线索重读并给出修正答案
-                    if desc_critical and any(vt.reads_agree(last, d) for d in desc_critical):
+                    if desc_critical and any(
+                        vt.reads_agree(last, d) for d in desc_critical
+                    ):
                         resolve_raw = await client.infer(
                             [
-                                {"role": "system", "content": "Produce the corrected answer for the question using ONLY "
-                                 "values you can see in the zoomed image. Candidates from other sources: "
-                                 + ", ".join(desc_critical[:8])
-                                 + ". If you cannot see any of them, set needs_verification=true. "
-                                 'Output ONLY JSON: {"answer": "...", "confidence": 0.0, "needs_verification": false}'},
-                                {"role": "user", "content": [
-                                    im.pil_message(crop),
-                                    {"type": "text", "text": f'Question: "{question}"\nFirst reading: {res.answer}'},
-                                ]},
+                                {
+                                    "role": "system",
+                                    "content": "Produce the corrected answer for the question using ONLY "
+                                    "values you can see in the zoomed image. Candidates from other sources: "
+                                    + ", ".join(desc_critical[:8])
+                                    + ". If you cannot see any of them, set needs_verification=true. "
+                                    'Output ONLY JSON: {"answer": "...", "confidence": 0.0, "needs_verification": false}',
+                                },
+                                {
+                                    "role": "user",
+                                    "content": [
+                                        im.pil_message(crop),
+                                        {
+                                            "type": "text",
+                                            "text": f'Question: "{question}"\nFirst reading: {res.answer}',
+                                        },
+                                    ],
+                                },
                             ],
                             max_tokens=400,
                         )
-                        res.vlm_outputs.append({"stage": "verify_resolve", "image": f"{sample_id}_verify.jpg", "output": resolve_raw[:500]})
+                        res.vlm_outputs.append(
+                            {
+                                "stage": "verify_resolve",
+                                "image": f"{sample_id}_verify.jpg",
+                                "output": resolve_raw[:500],
+                            }
+                        )
                         rd = api_client.extract_json(resolve_raw)
                         if isinstance(rd, dict) and rd.get("answer"):
                             res.answer = str(rd["answer"]).strip()
                             try:
                                 res.confidence = float(rd.get("confidence", 0.6))
-                            except (TypeError, ValueError):
+                            except TypeError, ValueError:
                                 res.confidence = 0.6
                     else:
                         res.confidence = min(res.confidence, 0.5)
@@ -1070,10 +1351,18 @@ class VerifyStrategy(FullPlusCropStrategy):
         # OCR 第三票：首读数字与复核/描述冲突时，用 tesseract 白名单读数仲裁
         ocr_vals = vt.ocr_numbers(crop)
         if ocr_vals:
-            res.vlm_outputs.append({"stage": "ocr", "image": f"{sample_id}_verify.jpg", "output": str(ocr_vals)})
+            res.vlm_outputs.append(
+                {
+                    "stage": "ocr",
+                    "image": f"{sample_id}_verify.jpg",
+                    "output": str(ocr_vals),
+                }
+            )
         if ocr_vals and desc_critical:
             for d in desc_critical:
-                if any(vt.reads_agree(o, d) for o in ocr_vals) and not vt.reads_agree(res.answer, d):
+                if any(vt.reads_agree(o, d) for o in ocr_vals) and not vt.reads_agree(
+                    res.answer, d
+                ):
                     for a in vt.extract_critical(res.answer):
                         if vt.reads_agree(a, res.answer) or a in res.answer:
                             replaced = vt.replace_critical(res.answer, a, d)
@@ -1090,7 +1379,9 @@ class TableReadStrategy(_RegionReadMixin, ImageStrategy):
 
     name = "table_read"
 
-    async def answer_visual(self, question, elements, route, store, client, sample_id="", workdir=""):
+    async def answer_visual(
+        self, question, elements, route, store, client, sample_id="", workdir=""
+    ):
         el, page, _ = elements[0]
         full = im.load_image(page.get("page_image", ""))
         vlm_out = []
@@ -1101,7 +1392,9 @@ class TableReadStrategy(_RegionReadMixin, ImageStrategy):
             img = im.upscale(img, 2)
         elif full is not None:
             regions = await self._locate(client, question, im.smart_resize(full), 1)
-            img = await self._crop_with_fallback(page, el, regions, workdir, f"{sample_id}_tbl")
+            img = await self._crop_with_fallback(
+                page, el, regions, workdir, f"{sample_id}_tbl"
+            )
         if img is None:
             return self._result("NOT_FOUND", elements)
         if workdir:
@@ -1127,17 +1420,31 @@ class TableReadStrategy(_RegionReadMixin, ImageStrategy):
         )
         msgs = [
             {"role": "system", "content": system},
-            {"role": "user", "content": [
-                im.pil_message(img),
-                {"type": "text", "text": f'Question: "{question}"\n\nOrientation hint (may contain errors): {hint[:600]}'},
-            ]},
+            {
+                "role": "user",
+                "content": [
+                    im.pil_message(img),
+                    {
+                        "type": "text",
+                        "text": f'Question: "{question}"\n\nOrientation hint (may contain errors): {hint[:600]}',
+                    },
+                ],
+            },
         ]
         raw = await client.infer(msgs, max_tokens=800)
-        vlm_out.append({"stage": "table_read", "image": f"{sample_id}_tbl.jpg", "output": raw[:2000]})
+        vlm_out.append(
+            {
+                "stage": "table_read",
+                "image": f"{sample_id}_tbl.jpg",
+                "output": raw[:2000],
+            }
+        )
         parsed = _parse_visual_json(raw)
         return self._result(
-            parsed["answer"], elements,
-            confidence=parsed["confidence"], needs_verification=parsed["needs_verification"],
+            parsed["answer"],
+            elements,
+            confidence=parsed["confidence"],
+            needs_verification=parsed["needs_verification"],
             vlm_outputs=vlm_out,
             selected_images=[el.get("img_path", ""), page.get("page_image", "")],
             crop_images=[],
@@ -1155,15 +1462,23 @@ class HybridStrategy(VerifyStrategy):
 
     name = "hybrid"
 
-    async def answer_visual(self, question, elements, route, store, client, sample_id="", workdir=""):
-        vis = await super().answer_visual(question, elements, route, store, client, sample_id, workdir)
+    async def answer_visual(
+        self, question, elements, route, store, client, sample_id="", workdir=""
+    ):
+        vis = await super().answer_visual(
+            question, elements, route, store, client, sample_id, workdir
+        )
         pages = _parent_pages(elements)
         # 相邻页扩展：图文题的逐对象/逐条件结论常写在相邻页
         extra_pages = []
         for p in pages:
             doc_id = p.get("doc_id", "")
             for delta in (-2, -1, 1, 2):
-                nb = store.page_of(f"{doc_id}|{p.get('page_idx', 0) + delta}") if hasattr(store, "page_of") else None
+                nb = (
+                    store.page_of(f"{doc_id}|{p.get('page_idx', 0) + delta}")
+                    if hasattr(store, "page_of")
+                    else None
+                )
                 if nb and nb.get("text"):
                     extra_pages.append(nb)
         ctx = "\n\n".join(
@@ -1212,7 +1527,9 @@ class HybridStrategy(VerifyStrategy):
             [{"role": "system", "content": system}, {"role": "user", "content": user}],
             max_tokens=800,
         )
-        vis.vlm_outputs.append({"stage": "hybrid_arbiter", "image": "", "output": raw[:2000]})
+        vis.vlm_outputs.append(
+            {"stage": "hybrid_arbiter", "image": "", "output": raw[:2000]}
+        )
         parsed = _parse_visual_json(raw)
         vis.answer = parsed["answer"] or vis.answer
         vis.confidence = parsed["confidence"] or vis.confidence
