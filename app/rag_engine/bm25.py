@@ -21,8 +21,8 @@ def tokenize(text: str) -> List[str]:
 class BM25Index:
     k1: float = 1.5
     b: float = 0.75
-    _docs: Dict[str, List[str]] = field(default_factory=dict)   # id -> tokens
-    _df: Dict[str, int] = field(default_factory=dict)           # term -> doc freq
+    _docs: Dict[str, List[str]] = field(default_factory=dict)  # id -> tokens
+    _df: Dict[str, int] = field(default_factory=dict)  # term -> doc freq
     _avgdl: float = 0.0
     _n: int = 0
 
@@ -50,8 +50,10 @@ class BM25Index:
                 if tf == 0:
                     continue
                 dl = len(tokens)
-                score = idf * (tf * (self.k1 + 1)) / (
-                    tf + self.k1 * (1 - self.b + self.b * dl / max(self._avgdl, 1))
+                score = (
+                    idf
+                    * (tf * (self.k1 + 1))
+                    / (tf + self.k1 * (1 - self.b + self.b * dl / max(self._avgdl, 1)))
                 )
                 scores[doc_id] = scores.get(doc_id, 0.0) + score
         ranked = sorted(scores.items(), key=lambda kv: kv[1], reverse=True)
