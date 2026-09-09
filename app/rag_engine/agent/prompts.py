@@ -205,9 +205,7 @@ def sub_answer_user(sub_question: str, context_text: str) -> str:
 
 def synthesis_user(question: str, sub_results: str) -> str:
     return (
-        f'Original question: "{question}"\n\n'
-        "Per-item extracted values:\n"
-        f"{sub_results}"
+        f'Original question: "{question}"\n\nPer-item extracted values:\n{sub_results}'
     )
 
 
