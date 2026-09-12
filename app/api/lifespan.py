@@ -10,9 +10,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app.agent import graph as graph_module
+from app.agent.memory.working import close_checkpointer, init_checkpointer
 from app.clients.doc_engine_client_manager import doc_engine_client_manager
 from app.clients.embedding_client_manager import embedding_client_manager
 from app.clients.es_client_manager import es_client_manager
+from app.clients.mcp_client_manager import mcp_client_manager
 from app.clients.mysql_client_manager import (
     dw_mysql_client_manager,
     meta_mysql_client_manager,
@@ -35,6 +38,10 @@ async def lifespan(app: FastAPI):
     dw_mysql_client_manager.init()
     doc_engine_client_manager.init()
 
+    # 工作记忆：用持久化 checkpointer（SQLite）重建主图，会话消息重启不丢；
+    # 记忆总开关关闭时退回 InMemorySaver，行为与旧版一致
+    graph_module.set_checkpointer(await init_checkpointer())
+
     # yield 之前是启动逻辑，yield 之后是关闭逻辑；中间阶段由 FastAPI 正常处理请求
     yield
 
@@ -45,3 +52,5 @@ async def lifespan(app: FastAPI):
     await dw_mysql_client_manager.close()
     await doc_engine_client_manager.close()
     await rerank_client_manager.close()
+    await mcp_client_manager.close()
+    await close_checkpointer()

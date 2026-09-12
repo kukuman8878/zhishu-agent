@@ -8,6 +8,7 @@
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any, Dict
 
 from dotenv import load_dotenv  # noqa: F401 保留导入以兼容直接运行 app_config.py 的场景
 from omegaconf import OmegaConf
@@ -89,16 +90,23 @@ class RerankConfig:
     recall_limit: int
     # 重排后截取并写回 state 的最终条数
     top_k: int
+    # 单次重排请求最大文档数：TEI /rerank 有服务端 batch 上限（默认 8），
+    # 超出返回 413，故候选按此值分批调用后合并分数
+    max_batch: int
 
 
 @dataclass
 class LLMConfig:
-    """大模型调用配置"""
+    """大模型调用配置（任务分级：主模型/廉价闲聊模型/辅助任务模型）"""
 
     model_name: str
     api_key: str
     base_url: str
     chat_model_name: str  # 域外闲聊等场景使用的轻量廉价模型
+    # 辅助任务模型开关与名称：召回关键词扩展、表/指标过滤选择等结构化辅助任务
+    # 下放到该模型以省成本；aux_enabled=false 时辅助任务回退主模型（质量零变化）
+    aux_enabled: bool
+    aux_model_name: str
 
 
 @dataclass
@@ -140,6 +148,60 @@ class TraceConfig:
 
 
 @dataclass
+class MemoryConfig:
+    """四类记忆配置（工作/摘要/用户/知识）"""
+
+    enabled: bool  # 总开关：false 时工作记忆退回 InMemorySaver，摘要/用户记忆不读写
+    # 工作记忆（短期会话消息）持久化 SQLite 文件路径（相对项目根）
+    sqlite_path: str
+    # 摘要记忆（中期）：消息条数达到该阈值时滚动生成会话摘要
+    summary_trigger_messages: int
+    # 用户记忆（长期画像/偏好）开关与注入上限
+    user_memory_enabled: bool
+    user_memory_max_facts: int
+    # 成本节流：仅当本轮问题含"偏好线索"（我/以后/默认/习惯…）才调模型抽取用户事实，
+    # 避免每轮都多一次 LLM 调用；false 时每轮都抽取
+    user_memory_cue_only: bool
+
+
+@dataclass
+class EvalConfig:
+    """问答结果评估配置（LLM-as-judge + 规则检查）"""
+
+    enabled: bool  # 总开关：false 时完全跳过评估
+    pass_threshold: float  # 综合分达标阈值，低于则 passed=false
+    emit_note: bool  # 未达标时是否向前端发 note 提醒（不覆盖答案）
+    llm_weight: float  # LLM 判定器在综合分中的权重（其余归规则判定器）
+
+
+@dataclass
+class OrchestratorConfig:
+    """多智能体编排（Supervisor）配置"""
+
+    # 总开关：true 时入口 classify_route 直接转 orchestrator 主 Agent，
+    # 由它决定知识复用/子 Agent 计划分发与终端事件；false 时完全走原四级路由
+    enabled: bool
+    # 计划拆解最多允许的子任务数（防止畸形计划拖垮链路）
+    max_tasks: int
+
+
+@dataclass
+class MCPConfig:
+    """MCP（Model Context Protocol）外部工具配置
+
+    仅服务于闲聊/域外问答节点（answer_general）：给廉价 chat_llm 绑定外部工具，
+    回答"天气/联网搜索"这类简单外部问题；不进入数据分析与文档链路。
+    """
+
+    enabled: bool  # 总开关：false 时 answer_general 行为与旧版完全一致
+    timeout: float  # 单次工具调用超时（秒）
+    max_tool_rounds: int  # 单轮问答内最多工具调用轮数，防止模型反复调用死循环
+    # MCP Server 列表：键为服务名，值为连接配置（transport/command/args/env/url/headers 等），
+    # 结构随 transport 而定，交由 langchain-mcp-adapters 消费，故用 Dict[str, Any] 宽松承载
+    servers: Dict[str, Any]
+
+
+@dataclass
 class APIConfig:
     """API 鉴权配置"""
 
@@ -163,6 +225,10 @@ class AppConfig:
     doc_engine: DocEngineConfig
     knowledge: KnowledgeConfig
     trace: TraceConfig
+    eval: EvalConfig
+    memory: MemoryConfig
+    orchestrator: OrchestratorConfig
+    mcp: MCPConfig
     api: APIConfig
 
 

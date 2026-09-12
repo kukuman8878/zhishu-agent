@@ -25,3 +25,9 @@ class QuerySchema(BaseModel):
         max_length=128,
         description="会话标识，同一会话的多轮提问共享上下文",
     )
+    # 可选用户标识：用于跨会话的用户记忆（画像/偏好）。不传时用户记忆退化为按 session 作用域
+    user_id: str | None = Field(
+        None,
+        max_length=128,
+        description="用户标识，同一用户跨会话共享偏好记忆；不传则按会话作用域",
+    )

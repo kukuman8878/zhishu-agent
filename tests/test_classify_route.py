@@ -38,6 +38,13 @@ class TestFastRoute:
         # 混合输入含闲聊词也不应被误判成闲聊
         assert _fast_route("统计一下销售额，谢谢") == "sql"
 
+    def test_联网搜索类问题走chat(self):
+        # MCP 外部能力相关：搜索/新闻类简单外部问题交给闲聊节点处理
+        assert _fast_route("搜索一下今天的最新新闻") == "chat"
+
+    def test_天气类问题走chat(self):
+        assert _fast_route("北京今天天气怎么样") == "chat"
+
     def test_无法确定返回None(self):
         assert _fast_route("你能帮我看下这个文件吗") is None
 

@@ -40,10 +40,3 @@ class DocRecord:
     title: str = ""
     pages: List[Page] = field(default_factory=list)
     n_pages: int = 0
-
-    def summary_text(self) -> str:
-        """文档摘要文本（用于文档级向量），取标题+首页文本头部。"""
-        head = ""
-        if self.pages:
-            head = self.pages[0].text[:3000]
-        return f"{self.domain} {self.title}\n{head}".strip()

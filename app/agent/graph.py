@@ -22,6 +22,7 @@ from app.agent.nodes.classify_route import classify_route
 from app.agent.nodes.doc_query import doc_query
 from app.agent.nodes.hybrid_split import hybrid_split
 from app.agent.nodes.hybrid_v2 import hybrid_v2
+from app.agent.nodes.orchestrator import orchestrator
 from app.agent.nodes.synthesize import synthesize
 from app.agent.sql_subgraph import _register_sql_nodes, build_sql_chain
 from app.agent.state import DataAgentState
@@ -57,6 +58,8 @@ graph_builder.add_node("doc_query", doc_query)
 graph_builder.add_node("synthesize", synthesize)
 graph_builder.add_node("hybrid_split", hybrid_split)
 graph_builder.add_node("hybrid_v2", hybrid_v2)
+# 多智能体编排节点（orchestrator.enabled=true 时由 classify_route 转入）
+graph_builder.add_node("orchestrator", orchestrator)
 
 # 注册 SQL 链路的 12 个节点（与 sql_subgraph 共享注册逻辑，并统一包裹耗时统计）
 _register_sql_nodes(graph_builder)
@@ -85,6 +88,8 @@ def _route_target(state):
         "chat": "answer_general",
         "doc": "doc_query",
         "knowledge": "answer_knowledge",
+        # orchestrator.enabled=true 时 classify_route 直接产出该路由，交给主 Agent
+        "orchestrator": "orchestrator",
     }.get(route, "extract_keywords")
 
 
@@ -99,8 +104,11 @@ graph_builder.add_conditional_edges(
         "doc_query": "doc_query",
         "hybrid_split": "hybrid_split",
         "hybrid_v2": "hybrid_v2",
+        "orchestrator": "orchestrator",
     },
 )
+# 主 Agent 内部完成计划/分发/综合并发出终端事件，直接收口
+graph_builder.add_edge("orchestrator", END)
 # hybrid v2 内部自行完成计划/执行/综合并发出 hybrid 终态，直接收口
 graph_builder.add_edge("hybrid_v2", END)
 # hybrid 闸门：同时扇出到 SQL 链与文档链，两条子链都结束才汇入 synthesize
@@ -119,9 +127,27 @@ graph_builder.add_edge("answer_general", "synthesize")
 graph_builder.add_edge("answer_knowledge", "synthesize")
 graph_builder.add_edge("synthesize", END)
 
-# 编译时挂 InMemorySaver：以 thread_id 为会话键持久化 messages 历史，
-# 支撑"那按月呢"这类多轮省略式追问（进程内有效，重启清空）
-graph = graph_builder.compile(checkpointer=InMemorySaver())
+
+# 图编译入口：checkpointer 由外层决定。默认进程内（InMemorySaver），
+# 服务启动时 lifespan 会用持久化 SQLite checkpointer（工作记忆）重建本图
+def build_graph(checkpointer=None):
+    """用给定 checkpointer 编译主图；checkpointer 为空时退回 InMemorySaver"""
+
+    return graph_builder.compile(checkpointer=checkpointer or InMemorySaver())
+
+
+# 以 thread_id 为会话键持久化 messages 历史，支撑"那按月呢"这类多轮省略式追问。
+# 默认图仅供脚本/单测导入；服务运行时由 lifespan 调用 set_checkpointer 替换。
+graph = build_graph()
+
+
+# 替换主图 checkpointer（lifespan 初始化工作记忆持久化后调用）；参数 checkpointer=新的检查点存储器
+def set_checkpointer(checkpointer):
+    """重建主图以挂载新的 checkpointer（工作记忆持久化）"""
+
+    global graph
+    graph = build_graph(checkpointer)
+
 
 # print(graph.get_graph().draw_mermaid())
 

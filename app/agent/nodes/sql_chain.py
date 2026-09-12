@@ -47,7 +47,9 @@ async def generate_sql(state: DataAgentState, runtime: Runtime[DataAgentContext]
         db_info = state["db_info"]
         query = state["query"]
         # 会话历史：省略式追问（"那按月呢"）需要结合上一轮问答还原完整查询意图
-        history = render_history(state.get("messages", []))
+        history = render_history(
+            state.get("messages", []), memory=state.get("memory_text", "")
+        )
 
         prompt = PromptTemplate(
             template=load_prompt("generate_sql"),

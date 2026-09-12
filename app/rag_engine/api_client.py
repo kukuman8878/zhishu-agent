@@ -8,7 +8,6 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
-import time
 from typing import Optional
 
 import httpx
@@ -155,19 +154,15 @@ async def _chat_complete_with_usage(
 
 
 class VLMClient:
-    """统一 VLM 调用入口（docx 十一）：infer / infer_batch / verify。
+    """统一 VLM 调用入口（docx 十一）：infer。
 
     - 同一 (messages + model + temperature) 命中 cache/vlm 直接复用
-    - 统计 API 调用次数与 token 用量，供 ablation 报告
     - 换 provider/model 只需改 .env 或传 model 参数，代码零改动
     """
 
     def __init__(self, use_cache: Optional[bool] = None, model: Optional[str] = None):
         self.use_cache = settings.vlm_cache if use_cache is None else use_cache
         self.model = model or settings.llm_model
-        self.calls = 0
-        self.prompt_tokens = 0
-        self.completion_tokens = 0
 
     async def infer(
         self,
@@ -182,42 +177,12 @@ class VLMClient:
             hit = vlm_cache.cache_get(key)
             if hit is not None:
                 return hit
-        self.calls += 1
-        raw, usage = await _chat_complete_with_usage(
+        raw, _ = await _chat_complete_with_usage(
             messages, max_tokens, temperature, model=self.model
         )
-        self.prompt_tokens += usage[0]
-        self.completion_tokens += usage[1]
         if self.use_cache:
             vlm_cache.cache_put(key, raw)
         return raw
-
-    async def infer_batch(
-        self,
-        reqs: list[dict],
-        concurrency: int = 4,
-    ) -> list[str]:
-        sem = asyncio.Semaphore(concurrency)
-
-        async def one(r: dict) -> str:
-            async with sem:
-                return await self.infer(
-                    r["messages"],
-                    max_tokens=r.get("max_tokens", 1024),
-                    temperature=r.get("temperature", 0.0),
-                )
-
-        return await asyncio.gather(*[one(r) for r in reqs])
-
-    async def verify(self, messages: list[dict], max_tokens: int = 512) -> str:
-        return await self.infer(messages, max_tokens=max_tokens)
-
-    def stats(self) -> dict:
-        return {
-            "calls": self.calls,
-            "prompt_tokens": self.prompt_tokens,
-            "completion_tokens": self.completion_tokens,
-        }
 
 
 def image_message(image_path: str, label: str = "") -> dict:
@@ -254,7 +219,3 @@ def extract_json(text: str) -> dict | list | None:
         return json.loads(t[start : end + 1])
     except json.JSONDecodeError:
         return None
-
-
-def now_ms() -> float:
-    return time.perf_counter() * 1000

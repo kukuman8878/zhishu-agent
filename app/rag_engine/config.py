@@ -70,14 +70,6 @@ class Settings:
     original_pdf_dir: str = field(default_factory=lambda: _env("ORIGINAL_PDF_DIR"))
     index_dir: str = field(default_factory=lambda: _env("INDEX_DIR", "index"))
     images_dir: str = field(default_factory=lambda: _env("IMAGES_DIR"))
-    # 随代码发布的图/表元素描述（构建期零 LLM 的关键资产，可用 env 覆盖路径）
-    # 默认定位到索引目录下的 element_descriptions.json（随索引一起发布）
-    element_descriptions_file: str = field(
-        default_factory=lambda: _env(
-            "ELEMENT_DESCRIPTIONS_FILE",
-            str(Path(_env("INDEX_DIR", "index")) / "element_descriptions.json"),
-        )
-    )
 
     # ---- 检索超参 ----
     doc_topk: int = field(default_factory=lambda: _env_int("DOC_TOPK", 2))
@@ -92,6 +84,16 @@ class Settings:
     rerank_weight: float = field(
         default_factory=lambda: _env_float("RERANK_WEIGHT", 0.7)
     )
+    # ---- 答案强约束（拒绝低置信 + 强制可溯源）----
+    # 重排分数门：检索到的页面里最高 bge-reranker 相关分低于该阈值时，判定语料未覆盖，
+    # 直接拒绝作答（返回 NOT_FOUND），避免用低相关页面编造答案。
+    rerank_min_score: float = field(
+        default_factory=lambda: _env_float("RERANK_MIN_SCORE", 0.30)
+    )
+    # 可溯源门：答案必须能落到具体页码（cited_pages 非空），否则拒绝作答
+    require_citation: bool = field(
+        default_factory=lambda: _env("REQUIRE_CITATION", "1") == "1"
+    )
 
     # ---- Agent 超参 ----
     max_agent_rounds: int = field(
@@ -99,9 +101,6 @@ class Settings:
     )
     answer_max_tokens: int = field(
         default_factory=lambda: _env_int("ANSWER_MAX_TOKENS", 1500)
-    )
-    router_max_tokens: int = field(
-        default_factory=lambda: _env_int("ROUTER_MAX_TOKENS", 400)
     )
     img_max_count: int = field(default_factory=lambda: _env_int("IMG_MAX_COUNT", 6))
     no_image_mode: bool = field(
@@ -120,9 +119,6 @@ class Settings:
         default_factory=lambda: _env_int("EMBEDDING_BATCH", 32)
     )
     page_image_dpi: int = field(default_factory=lambda: _env_int("PAGE_IMAGE_DPI", 150))
-    page_text_embed_chars: int = field(
-        default_factory=lambda: _env_int("PAGE_TEXT_EMBED_CHARS", 8000)
-    )
 
     # ---- 视觉策略 / 缓存 ----
     image_strategy: str = field(
@@ -137,9 +133,6 @@ class Settings:
     )
     full_image_max_dim: int = field(
         default_factory=lambda: _env_int("FULL_IMAGE_MAX_DIM", 2048)
-    )
-    element_trigger_score: float = field(
-        default_factory=lambda: _env_float("ELEMENT_TRIGGER_SCORE", 0.50)
     )
 
 

@@ -1,6 +1,6 @@
 """图片读取策略（P3，docx 五/七）：baseline / crop / multi_crop / full_plus_crop / verify。
 
-- baseline      : 与现有 answer_with_element_images 等价（构建期描述=主证据）——对照组
+- baseline      : 构建期描述为主证据（对照组）
 - crop          : 全页图定位区域 → 高 DPI 重渲染裁剪 → 放大 → 精读
 - multi_crop    : 最多 3 个候选区域分别精读 → 聚合
 - full_plus_crop: 全页图(结构) + 裁剪(精读) 双视图作答
@@ -580,7 +580,7 @@ class ImageStrategy(ABC):
 
 
 class BaselineStrategy(ImageStrategy):
-    """对照组：构建期描述为主证据（与旧 answer_with_element_images 等价）。"""
+    """对照组：构建期描述为主证据。"""
 
     name = "baseline"
 

@@ -38,10 +38,13 @@ class ValueESRepository:
 
     # 确保字段取值索引存在，不存在则按 IK 分词映射创建；参数：无
     async def ensure_index(self):
-        """确保字段取值索引已经创建好"""
+        """确保字段取值索引已经创建好（单节点集群副本数设 0，避免索引长期 yellow）"""
         if not await self.client.indices.exists(index=self.index_name):
             await self.client.indices.create(
-                index=self.index_name, mappings=self.index_mappings
+                index=self.index_name,
+                mappings=self.index_mappings,
+                # 本机为单节点 ES，副本无处分配会一直 yellow，故副本数为 0
+                settings={"number_of_replicas": 0},
             )
 
     # 把字段取值实体分批写入 ES(以 id 为文档 id 可覆盖重建)；参数 value_infos=ValueInfo 列表，batch_size=每批文档数

@@ -26,9 +26,11 @@ from app.clients.qdrant_client_manager import qdrant_client_manager
 from app.clients.rerank_client_manager import RerankClient, rerank_client_manager
 from app.repositories.es.value_es_repository import ValueESRepository
 from app.repositories.mysql.dw.dw_mysql_repository import DWMySQLRepository
+from app.repositories.mysql.meta.eval_mysql_repository import EvalMySQLRepository
 from app.repositories.mysql.meta.knowledge_mysql_repository import (
     KnowledgeMySQLRepository,
 )
+from app.repositories.mysql.meta.memory_mysql_repository import MemoryMySQLRepository
 from app.repositories.mysql.meta.meta_mysql_repository import MetaMySQLRepository
 from app.repositories.mysql.meta.trace_mysql_repository import TraceMySQLRepository
 from app.repositories.qdrant.column_qdrant_repository import ColumnQdrantRepository
@@ -127,6 +129,24 @@ async def get_trace_mysql_repository(
     return TraceMySQLRepository(session)
 
 
+# FastAPI 依赖：基于请求级元数据库 Session 创建问答评估仓储（与元数据仓储共享同一会话）；参数 session=请求级元数据库会话
+async def get_eval_mysql_repository(
+    session: Annotated[AsyncSession, Depends(get_meta_session)],
+) -> EvalMySQLRepository:
+    """基于请求级 Session 创建问答评估 MySQL 仓储"""
+
+    return EvalMySQLRepository(session)
+
+
+# FastAPI 依赖：基于请求级元数据库 Session 创建长期记忆仓储（摘要+用户偏好）；参数 session=请求级元数据库会话
+async def get_memory_mysql_repository(
+    session: Annotated[AsyncSession, Depends(get_meta_session)],
+) -> MemoryMySQLRepository:
+    """基于请求级 Session 创建长期记忆 MySQL 仓储"""
+
+    return MemoryMySQLRepository(session)
+
+
 # FastAPI 依赖：返回启动阶段初始化好的文档问答(agentic RAG)客户端供 doc/hybrid 链路使用；参数：无
 async def get_rag_client() -> DocEngineClient:
     """获取应用启动阶段初始化好的文档问答客户端"""
@@ -168,6 +188,12 @@ async def get_query_service(
     trace_mysql_repository: Annotated[
         TraceMySQLRepository, Depends(get_trace_mysql_repository)
     ],
+    eval_mysql_repository: Annotated[
+        EvalMySQLRepository, Depends(get_eval_mysql_repository)
+    ],
+    memory_mysql_repository: Annotated[
+        MemoryMySQLRepository, Depends(get_memory_mysql_repository)
+    ],
 ) -> QueryService:
     """组装一次查询所需的业务服务"""
 
@@ -184,4 +210,6 @@ async def get_query_service(
         knowledge_mysql_repository=knowledge_mysql_repository,
         knowledge_qdrant_repository=knowledge_qdrant_repository,
         trace_mysql_repository=trace_mysql_repository,
+        eval_mysql_repository=eval_mysql_repository,
+        memory_mysql_repository=memory_mysql_repository,
     )

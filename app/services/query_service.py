@@ -17,8 +17,9 @@ import uuid
 
 from langchain_huggingface import HuggingFaceEndpointEmbeddings
 
+from app.agent import graph as graph_module
 from app.agent.context import DataAgentContext
-from app.agent.graph import graph
+from app.agent.memory.manager import MemoryManager
 from app.agent.state import DataAgentState
 from app.clients.doc_engine_client_manager import DocEngineClient
 from app.clients.rerank_client_manager import RerankClient
@@ -28,9 +29,11 @@ from app.core.metrics import log_metrics_summary
 from app.entities.query_trace import QueryTrace
 from app.repositories.es.value_es_repository import ValueESRepository
 from app.repositories.mysql.dw.dw_mysql_repository import DWMySQLRepository
+from app.repositories.mysql.meta.eval_mysql_repository import EvalMySQLRepository
 from app.repositories.mysql.meta.knowledge_mysql_repository import (
     KnowledgeMySQLRepository,
 )
+from app.repositories.mysql.meta.memory_mysql_repository import MemoryMySQLRepository
 from app.repositories.mysql.meta.meta_mysql_repository import MetaMySQLRepository
 from app.repositories.mysql.meta.trace_mysql_repository import TraceMySQLRepository
 from app.repositories.qdrant.column_qdrant_repository import ColumnQdrantRepository
@@ -38,6 +41,7 @@ from app.repositories.qdrant.knowledge_qdrant_repository import (
     KnowledgeQdrantRepository,
 )
 from app.repositories.qdrant.metric_qdrant_repository import MetricQdrantRepository
+from app.services.evaluation_service import EvaluationService
 from app.services.knowledge_service import KnowledgeService
 
 # 沉淀内容判定常量：只有这三类业务路由的结论才值得沉淀，闲聊/复用不再入库
@@ -61,6 +65,8 @@ class QueryService:
         knowledge_mysql_repository: KnowledgeMySQLRepository,
         knowledge_qdrant_repository: KnowledgeQdrantRepository,
         trace_mysql_repository: TraceMySQLRepository,
+        eval_mysql_repository: EvalMySQLRepository,
+        memory_mysql_repository: MemoryMySQLRepository,
     ):
         # MySQL 仓储分别负责元数据补全和真实数仓环境信息读取
         self.meta_mysql_repository = meta_mysql_repository
@@ -87,6 +93,12 @@ class QueryService:
 
         # 轨迹仓储：每次问答结束后落一条结构化执行轨迹，供复盘与评估
         self.trace_mysql_repository = trace_mysql_repository
+
+        # 结果评估服务：问答结束后对终端答案做在线评估并落库（eval.enabled 开关）
+        self.evaluation_service = EvaluationService(eval_mysql_repository)
+
+        # 记忆管理器：加载/更新摘要记忆与用户记忆（工作记忆由 checkpointer 负责）
+        self.memory_manager = MemoryManager(memory_mysql_repository)
 
     # 把 SQL 行数据归一化为 markdown 表格文本，作为 sql 路由的沉淀答案；参数 rows=SQL 执行返回的行数据(dict 列表或单个)
     def _rows_to_markdown(self, rows) -> str:
@@ -186,8 +198,22 @@ class QueryService:
             logger.warning(f"查询轨迹落库失败（不影响本次问答）：{e}")
 
     # 执行一次问数工作流：创建初始 State/Context 并消费 graph.astream 输出，yield 逐条 SSE 文本(异常也包装为 error 事件)；参数 query=用户自然语言问题，session_id=会话标识(多轮追问共享历史)
-    async def query(self, query: str, session_id: str | None = None):
+    async def query(
+        self,
+        query: str,
+        session_id: str | None = None,
+        user_id: str | None = None,
+    ):
         """执行一次问数工作流，并逐段产出 SSE 消息"""
+
+        # 会话键：前端传 session_id 时共享历史；未传则用随机 thread_id 隔离（单轮语义不变）
+        thread_id = session_id or f"anon-{uuid.uuid4().hex}"
+        # 用户记忆作用域：优先用稳定 user_id，缺省退化到 session_id（至少会话内生效）
+        effective_user_id = user_id or session_id
+        # 加载长期记忆（会话摘要 + 用户偏好），渲染成提示词片段注入本轮
+        memory_context = await self.memory_manager.load_context(
+            thread_id, effective_user_id
+        )
 
         # State 只放会被图节点读写和合并的业务数据，外部工具对象不塞进 State。
         # 多轮会话下 checkpointer 会保留上一轮的普通字段，因此除 messages 外全部显式
@@ -217,6 +243,8 @@ class QueryService:
             knowledge_answer=None,
             knowledge_item_id=None,
             knowledge_score=None,
+            # 长期记忆片段（摘要+用户偏好），供各节点渲染进提示词
+            memory_text=memory_context.render(),
         )
         # Context 保存本次图执行需要复用的外部依赖，节点通过 runtime.context 读取
         context = DataAgentContext(
@@ -231,14 +259,12 @@ class QueryService:
             knowledge_mysql_repository=self.knowledge_service.knowledge_mysql_repository,
             knowledge_qdrant_repository=self.knowledge_service.knowledge_qdrant_repository,
         )
-        # 会话键：前端传 session_id 时共享历史；未传则用随机 thread_id 隔离（单轮语义不变）
-        thread_id = session_id or f"anon-{uuid.uuid4().hex}"
         config = {"configurable": {"thread_id": thread_id}}
         start = time.monotonic()
         try:
             # stream_mode=["custom","values"]：custom 收进度/结果事件，values 捕获图执行终态
             final_state = None
-            async for chunk in graph.astream(
+            async for chunk in graph_module.graph.astream(
                 input=state,
                 context=context,
                 config=config,
@@ -264,6 +290,28 @@ class QueryService:
                 None,
                 int((time.monotonic() - start) * 1000),
             )
+            # 记忆更新：滚动摘要 + 抽取用户偏好（工作记忆由 checkpointer 自动落盘）
+            await self.memory_manager.update_after_turn(
+                thread_id,
+                effective_user_id,
+                (final_state or {}).get("messages"),
+                query,
+            )
+            # 结果评估：在线打分并落库；低分且开启 emit_note 时补发一条 note（不覆盖答案）
+            eval_result = await self.evaluation_service.evaluate(final_state, thread_id)
+            if (
+                eval_result is not None
+                and not eval_result.passed
+                and app_config.eval.emit_note
+            ):
+                note = {
+                    "type": "note",
+                    "content": (
+                        f"结果质量自动评估得分较低（{eval_result.score:.2f}），"
+                        "建议核对口径后再使用。"
+                    ),
+                }
+                yield f"data: {json.dumps(note, ensure_ascii=False, default=str)}\n\n"
         except Exception as e:
             # 流式接口已经开始返回后不能再改 HTTP 状态码，因此把异常也包装成一条 SSE 消息
             error = {"type": "error", "message": str(e)}

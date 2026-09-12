@@ -78,3 +78,34 @@ CREATE TABLE query_trace
     error             TEXT COMMENT '失败原因(成功为空)',
     created_at        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间'
 );
+
+
+DROP TABLE IF EXISTS query_eval;
+CREATE TABLE query_eval
+(
+    id          VARCHAR(64) PRIMARY KEY COMMENT '评估编号',
+    session_id  VARCHAR(128) COMMENT '会话标识(多轮追问共享)',
+    query       TEXT COMMENT '用户问题',
+    route       VARCHAR(16) COMMENT '最终路由',
+    judge       VARCHAR(64) COMMENT '判定器名称(如 llm+rule)',
+    score       FLOAT COMMENT '综合分0~1',
+    passed      TINYINT(1) COMMENT '是否通过',
+    dimensions  TEXT COMMENT '各维度得分JSON',
+    reason      TEXT COMMENT '判定理由',
+    answer      TEXT COMMENT '被评估答案快照',
+    duration_ms INT COMMENT '评估耗时(毫秒)',
+    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间'
+);
+
+
+DROP TABLE IF EXISTS agent_memory;
+CREATE TABLE agent_memory
+(
+    id          VARCHAR(64) PRIMARY KEY COMMENT '记忆编号',
+    memory_type VARCHAR(16) NOT NULL COMMENT '记忆类型(summary/user)',
+    scope_id    VARCHAR(128) NOT NULL COMMENT '作用域(session_id/user_id)',
+    content     TEXT COMMENT '记忆内容(摘要正文/用户偏好事实)',
+    created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    updated_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    INDEX idx_memory_type_scope (memory_type, scope_id)
+);

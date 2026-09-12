@@ -23,11 +23,6 @@ _CRIT_RE = re.compile(
     re.I,
 )
 
-_DIM_RE = re.compile(rf"\d[\d,./]*\s*{_UNIT}", re.I)
-_BLOCK_RE = re.compile(r"[Bb]lock\s*[A-Z](?:\b|$)")
-_MODEL_RE = re.compile(
-    r"(?:Model|Type|No\.?|Ref\.?|Spec)\s*[A-Z0-9][A-Za-z0-9\-/]*", re.I
-)
 _NUM_RE = re.compile(r"[-+]?\d[\d,./]*\.?\d*")
 
 
@@ -39,14 +34,6 @@ def extract_critical(text: str) -> list[str]:
         if tok and tok not in out:
             out.append(tok)
     return out
-
-
-def has_critical_tokens(text: str) -> bool:
-    return bool(_CRIT_RE.search(text or ""))
-
-
-def question_contains_dimension(text: str) -> bool:
-    return bool(_DIM_RE.search(text or ""))
 
 
 def _norm(s: str) -> str:
@@ -63,11 +50,6 @@ def reads_agree(a: str, b: str) -> bool:
     if not na or not nb:
         return False
     return na == nb or na in nb or nb in na
-
-
-def compare_reads(first: str, second: str) -> tuple[bool, str]:
-    """比较两次关键 token 读数。返回 (是否一致, 归一化后的第一个读数)。"""
-    return reads_agree(first, second), _norm(first)
 
 
 def ocr_numbers(img) -> list[str]:

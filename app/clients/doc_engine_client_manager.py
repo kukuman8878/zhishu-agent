@@ -60,6 +60,23 @@ class DocEngineClient:
         try:
             answer, trace = await self._agent.answer(question)
             elapsed = time.perf_counter() - start
+            # 可溯源：优先用 Agent 校验过的引用页，缺省回落到证据页
+            cited_pages = list(trace.cited_pages) or [
+                e.page_idx + 1 for e in trace.evidence
+            ]
+            refused = trace.refused
+            reason = trace.refuse_reason
+            # 可溯源强制门：给出实质答案却拿不到任何引用页 → 拒绝（无法溯源）
+            if (
+                settings.require_citation
+                and answer
+                and answer != "NOT_FOUND"
+                and not cited_pages
+            ):
+                logger.warning("文档问答拒绝作答（无可溯源引用页）")
+                answer = "NOT_FOUND"
+                reason = "no citable evidence pages"
+                refused = True
             return {
                 "answer": answer,
                 "query_time_s": round(elapsed, 3),
@@ -68,7 +85,10 @@ class DocEngineClient:
                     "question_type": trace.route.question_type if trace.route else None,
                     "answer_type": trace.route.answer_type if trace.route else None,
                 },
-                "cited_pages": [e.page_idx + 1 for e in trace.evidence],
+                "cited_pages": cited_pages,
+                # 拒答标记与原因：供上层生成更明确的"无法从文档作答"提示
+                "refused": refused,
+                "reason": reason,
                 "error": "",
             }
         except Exception as e:

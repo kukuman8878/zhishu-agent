@@ -1,14 +1,15 @@
 """
 意图路由节点（Agent 入口闸门）
 
-用途：在进入任何业务链路之前，先判断用户问题属于哪一类能力，把流量分成四路：
+用途：在进入任何业务链路之前，先判断用户问题属于哪一类能力，把流量分成五路：
+  - knowledge → 命中知识库沉淀问题时短路复用存量答案；
   - sql     → 走数据分析主链路（召回 → SQL 生成 → 执行），并向前端展示 LangGraph 流程图；
   - doc     → 走文档问答链路（进程内文档引擎，检索 PDF/图/表内容回答）；
   - hybrid  → 同时需要数仓数据与文档内容（并行跑 sql + doc，再综合）；
   - chat    → 短路到 answer_general 节点，用轻量 chat_llm 直接回答。
 
 设计要点：
-  1. 四级路由，兼顾“快”与“稳”：
+  1. 五级路由，兼顾“快”与“稳”：
      ⓪ 知识沉淀复用：先查 LLMWiki 式知识库，命中相似沉淀问题直接复用答案；
      ① 数据/文档特征词命中 → 直接判 sql/doc（省一次模型调用）；
      ② 跨域特征词 + 数据或文档词 → 判 hybrid；
@@ -22,7 +23,6 @@
 
 import json
 import re
-from datetime import datetime
 
 from langchain_core.messages import HumanMessage
 from langchain_core.prompts import PromptTemplate
@@ -35,7 +35,12 @@ from app.agent.llm_utils import retry_async
 from app.agent.state import DataAgentState
 from app.conf.app_config import app_config
 from app.core.log import logger
-from app.core.text_utils import same_metric_domain, same_numbers
+from app.core.text_utils import (
+    has_future_year,
+    same_metric_domain,
+    same_numbers,
+    same_region_scope,
+)
 from app.prompt.prompt_loader import load_prompt
 
 # 路由枚举值（与 state.route、classify_route.prompt 输出、前端 mode 一一对应）
@@ -154,23 +159,23 @@ CHAT_HINTS = [
     "写首诗",
     "讲个笑话",
     "天气",
+    "天气预报",
+    "气温",
+    "下雨",
+    "新闻",
+    "热搜",
+    "搜索",
+    "搜一下",
+    "查一下",
+    "汇率",
+    "股价",
+    "航班",
     "聊天",
     "你是谁家的",
 ]
 
 # 需要忽略的标点/空白：用于把问题里的标点去掉后再做关键词匹配
 _OFF_TOPIC_SYMBOLS = {"。", "？", "?", "！", "!", "，", ",", " ", "　"}
-
-# 年份守卫：问句中出现"未来年份"时跳过知识复用——沉淀答案携带历史时间口径，
-# 复用到未来时间会答错（如问 2030 年却返回 2025 年的数）
-_YEAR_PATTERN = re.compile(r"(?:19|20)\d{2}")
-
-
-# 判断问句是否包含晚于当前年份的年份数字；参数 query=用户问题文本
-def _asks_future_year(query: str) -> bool:
-    """问句含未来年份时返回 True（用于跳过知识库复用，防止时间口径错配）"""
-    current_year = datetime.now().year
-    return any(int(year) > current_year for year in _YEAR_PATTERN.findall(query))
 
 
 # 本地关键词零成本预判路由，命中返回 sql/doc/hybrid/chat，无法确定返回 None；参数 query=用户原始问题文本
@@ -255,9 +260,12 @@ async def _recall_knowledge(state: DataAgentState, runtime: Runtime[DataAgentCon
         )
         for item, score in results:
             # 口径守卫：① 数字不一致（年份/季度/TopN 变化）不复用（bge 对数字不敏感）；
-            # ② 指标词冲突（"会员数量" vs "订单数量"）不复用（bge 对单业务词不敏感）
-            if not same_numbers(query, item.question) or not same_metric_domain(
-                query, item.question
+            # ② 指标词冲突（"会员数量" vs "订单数量"）不复用；
+            # ③ 地区不一致（"华中" vs "华南"）不复用（bge 对地区词不敏感）
+            if (
+                not same_numbers(query, item.question)
+                or not same_metric_domain(query, item.question)
+                or not same_region_scope(query, item.question)
             ):
                 logger.info(
                     f"知识复用跳过（口径不一致）：query={query[:30]} hit={item.question[:30]} score={score:.3f}"
@@ -282,10 +290,16 @@ async def classify_route(state: DataAgentState, runtime: Runtime[DataAgentContex
     # 本轮用户输入写入会话历史（add_messages 归并 + checkpointer 持久化）
     user_message = [HumanMessage(content=query)]
 
+    # 多智能体编排模式（orchestrator.enabled）：入口不再做规则/模型路由，
+    # 统一交给 orchestrator 节点（主 Agent）自行做知识复用判定 + 计划分发。
+    # 默认关闭时完全走原四级路由，零回归。
+    if app_config.orchestrator.enabled:
+        return {"route": "orchestrator", "messages": user_message}
+
     # 第 0 步：知识沉淀复用（LLMWiki 式）。相似问题命中沉淀知识时短路到
     # answer_knowledge 直接复用存量答案，不再消耗召回/SQL 全链路；
     # 问句带未来年份时跳过复用，避免历史答案的时间口径错配
-    if app_config.knowledge.enabled and not _asks_future_year(query):
+    if app_config.knowledge.enabled and not has_future_year(query):
         hit = await _recall_knowledge(state, runtime)
         if hit is not None:
             item, score = hit
@@ -306,7 +320,9 @@ async def classify_route(state: DataAgentState, runtime: Runtime[DataAgentContex
     # 第 2 步：规则无法确定时，用快速廉价的 chat_llm 做一次语义判别；
     # 注入会话历史，让"那按月呢"这类省略式追问能结合上下文还原真实意图
     try:
-        history = render_history(state.get("messages", []))
+        history = render_history(
+            state.get("messages", []), memory=state.get("memory_text", "")
+        )
         prompt = PromptTemplate(
             template=load_prompt("classify_route"),
             input_variables=["query", "history"],

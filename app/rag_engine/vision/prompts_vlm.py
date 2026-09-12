@@ -134,43 +134,6 @@ def verify_token_user(first_reading: str, candidates: str = "") -> str:
     )
 
 
-DESC_HINT_SYSTEM = """You answer a question about figures/tables/charts in documents.
-
-For each relevant figure/table you get:
-1. A DESCRIPTION generated earlier (use it ONLY to locate which figure/table and roughly where;
-   it may contain errors, never trust it as fact).
-2. The figure/table IMAGE itself — THE SOURCE OF TRUTH.
-3. Surrounding page text.
-
-Rules:
-1. Answer from the IMAGE. When the image and the description conflict, TRUST THE IMAGE.
-2. Read every character, digit, symbol EXACTLY as printed.
-3. Report numbers verbatim (sign, decimals, unit). Do not compute or guess.
-4. Ambiguous characters -> lower confidence, needs_verification=true.
-5. ENUMERATION questions ("which machinery/vehicles/objects appear", "what is depicted",
-   "list the ..."): be EXHAUSTIVE — name EVERY distinct machine/vehicle/object visible,
-   describe its role and attachments explicitly (e.g. a crane with a fixed jib,
-   a machine with a bucket attachment). Do not merge two machines into one and do not omit any.
-6. MULTI-LABEL COMPLETENESS: if the relevant region shows several applicable labels/items
-   ("A and B", multiple bullets/annotations), explicitly check whether more than one must
-   be included. Never stop after the first matching item, never drop a second label.
-7. HIGH-RISK READINGS (numbers, units, similar-looking characters — 50 vs 90, nm vs μm,
-   I vs l, O vs 0): read character by character. If not fully certain, re-read the local
-   region and keep the visually supported reading — never substitute a statistically
-   common value.
-8. Only answer "NOT_FOUND" if image AND page text all lack the information.
-
-Output ONLY a JSON object (no markdown fences):
-{
-  "answer": "complete self-contained sentence with the exact value(s)",
-  "evidence": "quote what is visible and where",
-  "confidence": 0.0,
-  "region": "short location description",
-  "needs_verification": true or false,
-  "observations": [{"content": "one observed fact/value", "confidence": 0.0}]
-}"""
-
-
 TABLE_STRUCT_SYSTEM = """You answer a question about tabular data. The evidence contains STRUCTURED TABLE CELLS
 extracted deterministically from the table markup — they are EXACT and authoritative.
 A description may also be provided — use it ONLY to understand row/column labels

@@ -74,13 +74,15 @@ services:
       - "8082:80"
     # 注意：本机 13GB 内存不足以在 CPU 上同时跑 embedding + 大体积 reranker，
     # 故选用更小的 bge-reranker-base（约 1.1GB 权重）以在此机上跑通真实重排。
-    # MAX_BATCH_TOKENS/并发调低：避免 rerank 推理时 batch 内存峰值过大挤爆整机内存(OOM)
+    # MAX_BATCH_TOKENS 调低避免 batch 内存峰值过大 OOM；
+    # MAX_CONCURRENT_REQUESTS 必须 >1：并发=1 时 warmup 占满唯一槽位会让内部队列
+    # 溢出并触发 TEI 的 "Queue background task ... Full(..)" panic（服务反复重启）
+    # 并发/batch 对齐已验证稳定的 embedding 服务配置（16 / 16384）：
+    # 过低的并发/batch 会让内部队列反复溢出并触发 TEI "Queue background task ... Full(..)" panic
     environment:
       MODEL_ID: /models/bge-reranker-base
-      MAX_CONCURRENT_REQUESTS: "1"
-      MAX_BATCH_TOKENS: "2048"
-      MAX_BATCH_REQUESTS: "1"
-      MAX_CLIENT_BATCH_SIZE: "8"
+      MAX_CONCURRENT_REQUESTS: "16"
+      MAX_BATCH_TOKENS: "16384"
     volumes:
       - ./embedding/bge-reranker-base:/models/bge-reranker-base
 

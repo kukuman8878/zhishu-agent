@@ -12,7 +12,6 @@ import io
 from pathlib import Path
 from typing import Optional, Tuple
 
-import numpy as np
 from PIL import Image
 
 from ..config import settings
@@ -110,12 +109,3 @@ def render_pdf_region(
             return Image.open(io.BytesIO(pix.tobytes("png"))).convert("RGB")
     except Exception:
         return None
-
-
-def image_density(img: Image.Image) -> float:
-    """边缘/纹理密度启发值：工程图、密集小字图显著偏高（供视觉路由判题用）。"""
-    g = img.convert("L").resize((512, 512), Image.BILINEAR)
-    arr = np.asarray(g, dtype=np.float32)
-    gy, gx = np.gradient(arr)
-    mag = np.sqrt(gx**2 + gy**2)
-    return float((mag > 24).mean())

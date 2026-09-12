@@ -1,7 +1,7 @@
 <div align='center'>
   <h1 style="margin-top: 15px;">「智数」智能数据分析 Agent</h1>
   <h4><b>zhishu-agent</b></h4>
-  <p><em>可能是全网最适合用于系统学习 LangGraph 的智能问数实战项目——带你打通「元数据混合检索 + 多阶段推理 + SQL 生成与自愈执行 + SSE 流式交付」的完整工程链路，并额外内置一套进程内多模态文档问答引擎，实现数据与文档的统一问答。</em></p>
+  <p><em>可能是全网最适合用于系统学习 LangGraph 的智能问数实战项目——带你打通「元数据混合检索 + 多阶段推理 + SQL 生成与自愈执行 + SSE 流式交付」的完整工程链路，并内置进程内多模态文档问答引擎、Supervisor 多智能体编排、MCP 外部工具、四类记忆与 LLM-as-judge 结果评估，实现数据与文档的统一问答。</em></p>
 </div>
 
 <div align='center'>
@@ -36,6 +36,14 @@
 
 除数据分析外，`智数` 还内置了一个**进程内多模态文档问答引擎**（`app/rag_engine/`），可对 PDF/图/表类文档提问并返回引用页码；当问题同时需要数仓数据与文档内容时，自动进入 **hybrid 跨源综合**：数据链与文档链并行执行后合并给出结论。所有链路统一走 SSE 流式返回前端。
 
+在此之上，项目还提供了几项可选增强能力（默认按配置开关，均可一键回退）：
+
+- **Supervisor 多智能体编排**（`orchestrator.enabled`）：把路由交给主 Agent，由它做知识门判定、计划拆解，再把子任务分发给 `sql/doc/chat` 子 Agent 并综合出终端事件。
+- **MCP 外部工具**（`mcp.enabled`）：给子 Agent 绑定专属 MCP 工具（内置时间/计算器/单位换算，可扩展联网搜索/天气），支持按 `agents` 分配归属。
+- **四类记忆**（`memory.enabled`）：工作记忆（会话消息，SQLite 持久化）+ 摘要记忆 + 用户画像记忆（Meta MySQL）+ 知识记忆（LLMWiki 沉淀）。
+- **结果评估**（`eval.enabled`）：每次问答终端答案后由 LLM-as-judge + 规则检查打分并落库，低分可发提醒，用于质量监控。
+- **任务分级模型**（`llm.aux_*`）：主模型只保留 SQL 生成与综合，召回扩展/过滤/计划等辅助任务下放廉价模型，在保证质量的前提下大幅降本。
+
 ### 💬 它能回答什么样的问题？
 
 打开前端聊天界面，你可以直接这样问：
@@ -66,8 +74,18 @@
     - 每次 sql/doc/hybrid 问答结束后，有价值的结论自动沉淀进知识库；下次遇到相似问题直接召回复用、秒级返回，并累加命中次数（`hit_count`）。
 - **工程化后端结构清晰**
     - 基于 `FastAPI + LangGraph + Repository + Client Manager` 组织配置、客户端、仓储层、服务层与智能体流程，模块边界清楚，便于维护和扩展。
-- **支持多轮会话与追问**
-    - 基于 `InMemorySaver` 的 `thread_id` 会话记忆，支撑"那按月呢"这类省略式追问；入口 `classify_route` 注入历史上下文还原真实意图。
+- **四类记忆，越用越懂你**
+    - 工作记忆（会话消息，`SQLite` 持久化，重启不丢）＋摘要记忆（长对话滚动摘要）＋用户记忆（跨会话画像/偏好）＋知识记忆（LLMWiki 沉淀），支撑"那按月呢"这类省略式追问。
+- **Supervisor 多智能体编排（可选）**
+    - 开启后主 Agent 先做知识复用门，再用主模型把问题拆成 `sql/doc/chat` 子任务、分发执行并按结果组合终端事件；子 Agent 统一 `AgentResult` 契约、失败不抛异常。
+- **MCP 外部工具，按 Agent 专属分配**
+    - 每个 MCP Server 声明归属哪些子 Agent（`agents: [chat/sql/doc/knowledge]`），内置时间/计算器/单位换算工具开箱即用，可扩展联网搜索、天气等；未配置/连接失败一律 fail-open。
+- **LLM-as-judge 结果评估（可选）**
+    - 终端答案由可插拔判定器（LLM 忠实性/相关性/完整性 + 规则检查）加权打分并写入 `query_eval`，低分可发 `note` 提醒，形成质量闭环。
+- **任务分级控成本**
+    - 主模型只保留 `generate_sql`/`correct_sql` 与跨源综合；召回关键词扩展、表/指标过滤、计划拆解下放廉价辅助模型，配合 fail-open（过滤为空则保留全部候选），在质量不降的前提下把单次问数主模型调用从 6 次降到 1 次。
+- **RAG 强约束、答案可溯源**
+    - 文档作答类 Prompt 强制"仅依证据、必填 `cited_pages`、不可溯源则拒答"，叠加**重排分门**（最高 bge-reranker 分低于阈值直接拒答）与**可溯源强制门**（实质答案无引用页改判 `NOT_FOUND`）。
 - **前端实时展示 LangGraph 执行流程**
     - React 界面不只显示答案，还把"抽取关键词 → 召回 → 生成 SQL → 校验 → 执行"的每一步以流程图形式流式点亮，过程完全可见。
 
@@ -129,7 +147,10 @@ START
 | Embedding     | `TEI` / `BAAI/bge-large-zh-v1.5` | 智数主链路将字段、指标、问题文本转向量                   |
 | 语义重排      | `TEI` / `BAAI/bge-reranker-base` | 召回后 cross-encoder 精排截取 top_k（fail-open 降级）     |
 | 智能体编排    | `LangGraph`                      | 组织多阶段问数工作流、条件路由、并行扇出、子图复用       |
-| 文档问答引擎  | `app/rag_engine/`（多模态 Agent）| 内置进程内文档问答：页面/元素索引 + VLM + 引用页码       |
+| 多智能体编排  | `Supervisor` 模式（可选）         | 主 Agent 计划拆解并分发 `sql/doc/chat` 子 Agent，综合终端事件 |
+| 外部工具      | `MCP`（Model Context Protocol）   | 子 Agent 专属工具（时间/计算器/换算，可扩展搜索/天气）    |
+| 会话记忆      | `SQLite`（`langgraph-checkpoint-sqlite`） | 工作记忆持久化（重启不丢），摘要/用户记忆落 MySQL |
+| 结果评估      | `LLM-as-judge` + 规则检查（可选） | 可插拔判定器打分落 `query_eval`，低分提醒               |
 | 模型接入      | `LangChain` / OpenAI 兼容协议     | 封装主链路 LLM 与文档引擎的硅基流动调用                  |
 | 后端接口      | `FastAPI`                        | 提供问数 API、依赖注入和生命周期管理                     |
 | 流式协议      | `SSE`                            | 实时返回节点进度、查询结果、文档答案与错误消息           |
@@ -142,18 +163,26 @@ START
 ```text
 zhishu-agent/
 ├── app/
-│   ├── agent/            # LangGraph 图、状态、上下文和各类节点（graph.py 等）
-│   ├── rag_engine/       # 内置进程内多模态文档问答引擎（原独立 RAG 方案，已融入）
+│   ├── agent/            # LangGraph 图、状态、上下文与节点
+│   │   ├── graph.py      # 主图：classify_route 五级路由 + 内联 SQL 链 + 收口
+│   │   ├── sql_subgraph.py   # 独立编译的 SQL 分析子图（主图/hybrid/编排复用）
+│   │   ├── tool_loop.py  # 通用有界工具调用循环（chat 流式 / 子 Agent 静默补充）
+│   │   ├── agents/       # 子 Agent：sql/doc/knowledge/chat + AgentResult 契约
+│   │   ├── judges/       # 可插拔评估判定器：LLMJudge + RuleJudge
+│   │   ├── memory/       # 四类记忆：working（SQLite）/manager（摘要+用户）
+│   │   └── nodes/        # classify_route、recall、filter、sql_chain、orchestrator 等
+│   ├── rag_engine/       # 内置进程内多模态文档问答引擎（检索 + VLM + 引用页码）
+│   ├── mcp_servers/      # 内置本地 MCP 工具服务（时间/计算器/单位换算）
 │   ├── api/              # FastAPI 路由、依赖注入、生命周期和请求结构
-│   ├── clients/          # MySQL、Qdrant、ES、Embedding、文档引擎客户端管理
+│   ├── clients/          # MySQL、Qdrant、ES、Embedding、文档引擎、MCP 客户端管理
 │   ├── conf/             # 配置 dataclass 与配置加载工具
-│   ├── core/             # 日志、request_id 上下文等通用能力
-│   ├── entities/         # 更贴近业务语义的数据对象
+│   ├── core/             # 日志、口径守卫（text_utils）、request_id 等通用能力
+│   ├── entities/         # 业务实体（含 query_trace / query_eval）
 │   ├── models/           # SQLAlchemy ORM 模型
 │   ├── prompt/           # Prompt 加载工具
 │   ├── repositories/     # MySQL、Qdrant、Elasticsearch 数据访问层
 │   ├── scripts/          # 元数据知识库构建脚本
-│   └── services/         # 元数据构建、知识沉淀与问数查询服务
+│   └── services/         # 查询、知识沉淀、结果评估服务
 ├── conf/                 # app_config.yaml、meta_config.yaml（运行时配置）
 ├── data/                 # 文档引擎索引与缓存（doc_index/、vlm_cache/，不入 git）
 ├── docker/               # Docker Compose、MySQL 初始化 SQL、ES 插件、Embedding 挂载目录
@@ -217,10 +246,14 @@ LLM_API_KEY=你的真实key
 
 ```yaml
 llm:
-    model_name: Pro/zai-org/GLM-5.1   # 主模型
-    chat_model_name: deepseek-ai/DeepSeek-V3   # 意图判别/闲聊（更便宜）
+    model_name: Pro/zai-org/GLM-5.1            # 主模型：SQL 生成/修正 + 跨源综合
+    chat_model_name: deepseek-ai/DeepSeek-V3   # 意图判别/闲聊/自检/记忆/评估
+    aux_enabled: true                          # 辅助任务分级：辅助模型开关
+    aux_model_name: deepseek-ai/DeepSeek-V3    # 召回扩展/过滤/计划拆解用廉价模型
     base_url: https://api.siliconflow.cn/v1
 ```
+
+> 💰 **任务分级控成本**：主模型只保留质量关键环节；召回扩展、表/指标过滤、计划拆解下放到 `aux_model_name`。把 `aux_enabled` 设为 `false` 即可让辅助任务回退主模型（行为与旧版一致，便于 A/B）。
 
 > ⚠️ **新手最容易卡的一步**：`Pro/zai-org/GLM-5.1` 是特定模型，如果你的账号没开通它，换成人人能用的模型即可——把 `conf/app_config.yaml` 里 `model_name` 改成 `deepseek-ai/DeepSeek-V3`（硅基流动免费额度即可用）。改完需**重启后端**生效。
 
@@ -248,7 +281,7 @@ uv run hf download BAAI/bge-reranker-base --local-dir docker/embedding/bge-reran
 docker compose -f docker/docker-compose.yaml up -d
 ```
 
-这会启动 5 个容器：MySQL、Elasticsearch、Kibana、Qdrant、Embedding(TEI)。首次运行要拉镜像，耐心等。验证：
+这会启动 6 个容器：MySQL、Elasticsearch、Kibana、Qdrant、Embedding(TEI)、Rerank(TEI)。首次运行要拉镜像，耐心等。验证：
 
 ```bash
 docker compose -f docker/docker-compose.yaml ps   # 全部显示 Up 即成功
@@ -285,11 +318,13 @@ curl http://127.0.0.1:8000/health
 POST http://127.0.0.1:8000/api/query
 ```
 
-请求示例：
+请求示例（`session_id` 为可选会话标识，同一会话多轮共享历史；`user_id` 为可选用户标识，用于跨会话偏好记忆）：
 
 ```json
 {
-    "query": "统计华北地区的销售总额"
+    "query": "统计华北地区的销售总额",
+    "session_id": "demo-session",
+    "user_id": "demo-user"
 }
 ```
 
@@ -299,10 +334,11 @@ SSE 消息类型：
 | ---------- | ----------------------------------------------------------------- |
 | `progress` | 节点执行进度                                                      |
 | `result`   | 最终 SQL 查询结果                                                 |
-| `message`  | 闲聊/降级纯文本（前端隐藏流程图）                                 |
+| `message`  | 闲聊/知识复用/降级纯文本（前端隐藏流程图）                        |
 | `doc`      | 文档问答答案 + 引用页码                                            |
-| `delta`    | 跨源综合（hybrid）逐字流式文本                                    |
-| `note`     | 结果自检提醒                                                      |
+| `delta`    | 逐字流式文本（闲聊/文档答案/hybrid 综合）                        |
+| `hybrid`   | 跨源综合三段式最终文本                                            |
+| `note`     | 结果自检/结果评估提醒（附在结果旁，不覆盖答案）                  |
 | `error`    | 全局异常消息                                                      |
 
 **💡 不带前端，先用命令行验证后端**：
@@ -345,6 +381,17 @@ VITE_DEV_PROXY_TARGET=http://127.0.0.1:8000
 | `统计华北地区的销售总额` | 前端自上而下点亮流程图 → 结果表格 |
 | `华东地区订单数量是多少` | 数据结果 |
 | `你好，你是谁` | 闲聊回复（不带流程图）|
+| 同一问题再问一次 | `knowledge` 路由直接复用沉淀答案（秒回） |
+
+### 🔧 可选增强能力（在 `conf/app_config.yaml` 开关，改动需重启后端）
+
+| 能力 | 配置开关 | 说明 |
+| ---- | -------- | ---- |
+| 多智能体编排 | `orchestrator.enabled`（默认 `false`） | 主 Agent 计划拆解并分发子 Agent；关闭时走原四级路由，零回归 |
+| MCP 外部工具 | `mcp.enabled`（默认 `true`） | `mcp.servers.*.agents` 声明工具归属哪个子 Agent；内置工具开箱即用 |
+| 四类记忆 | `memory.enabled`（默认 `true`） | 工作记忆落 `data/memory/checkpoints.db`；摘要/用户记忆落 MySQL |
+| 结果评估 | `eval.enabled`（默认 `false`） | LLM-as-judge + 规则检查打分写 `query_eval`，低分发 `note` |
+| 知识沉淀 | `knowledge.enabled` / `deposit_enabled` | 复用与沉淀知识库；带数字/指标/地区口径守卫，避免串台 |
 
 ## ❓ 常见问题（FAQ）
 
@@ -357,14 +404,20 @@ VITE_DEV_PROXY_TARGET=http://127.0.0.1:8000
 **Q3：`fastapi dev main.py` 报缺模块 / ModuleNotFoundError**
 没在项目根目录运行，或依赖没装全。回到项目根目录重新 `uv sync`。
 
-**Q4：问数据类问题返回"文档问答服务暂不可用"**
-这是**文档问答(doc 路由)**的降级提示——SQL 查询本身是好的。`doc/hybrid` 需要额外的文档引擎索引（见上方说明），纯数据问题请走 `sql` 路由，或确认提问不含"文档/手册"等词。
+**Q4：问数据类问题返回"文档问答引擎暂不可用"或"未找到足够依据"**
+这是**文档问答(doc 路由)**的降级提示——SQL 查询本身是好的。`doc/hybrid` 需要额外的文档引擎索引与有效的文档引擎 API Key（见上方说明）；且引擎遵循"可溯源"强约束，重排相关度过低时会主动拒答。纯数据问题请走 `sql` 路由，或确认提问不含"文档/手册"等词。
 
 **Q5：MySQL 连不上 / 密码错误**
 本地库账号默认 `didilili`/`dili123`（见 `conf/app_config.yaml`）。若之前跑过旧容器，数据可能残留，可 `docker compose -f docker/docker-compose.yaml down -v` 清空重建（会清掉已建的知识库，需重跑第 7 步）。
 
 **Q6：想让 SQL 更稳 / 想换更聪明的模型**
-把 `conf/app_config.yaml` 的 `model_name` 换成更强的模型；多轮追问会自动带上下文，无需额外配置。
+把 `conf/app_config.yaml` 的 `model_name` 换成更强的模型；辅助任务（召回扩展/过滤/计划）由 `aux_model_name` 控制，可单独换便宜模型。多轮追问会自动带上下文，无需额外配置。
+
+**Q7：会话记忆存哪里？重启会丢吗？**
+工作记忆（会话消息）持久化在 `data/memory/checkpoints.db`（SQLite），**重启不丢**；摘要与用户画像记忆落 MySQL `agent_memory` 表。想清空某个会话，删除对应 `thread_id` 的检查点，或直接删 `data/memory/checkpoints.db`（会清空所有会话历史）。
+
+**Q8：为什么单次问数只调 1 次主模型？**
+任务分级：只有 `generate_sql`/`correct_sql` 与跨源综合用主模型，其余（召回关键词扩展、表/指标过滤、计划拆解）走廉价 `aux_model_name`，并带 fail-open 兜底。设 `aux_enabled: false` 可让辅助任务回退主模型对比质量。
 
 > 本项目基于尚硅谷「大模型智能体掌柜问数」项目，并在此基础上整理完善。
 
@@ -376,8 +429,9 @@ VITE_DEV_PROXY_TARGET=http://127.0.0.1:8000
 - 多租户隔离
 - SQL 安全审计和执行白名单
 - 查询缓存、限流和性能治理
-- 系统化评测集与自动化回归评测
 - 监控告警、链路追踪平台和灰度发布
-- 更复杂的多轮问数记忆、追问改写和会话管理
+- 更复杂的追问改写与主动澄清
+
+> 注：多轮记忆已提供工作/摘要/用户/知识四类，结果评估已提供在线 LLM-as-judge（`eval.enabled`）与 `query_trace` 轨迹；但**离线评测集、自动化回归、评测看板**等仍属待扩展范围。
 
 这些能力适合在基础流程跑通之后继续扩展。`zhishu-agent` 更适合承担一个清晰角色：先把智能问数最关键、最必要、最值得学习的工程链路讲清楚、跑起来，并为后续扩展企业级能力打基础。

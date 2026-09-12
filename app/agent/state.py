@@ -121,3 +121,7 @@ class DataAgentState(TypedDict):
     knowledge_item_id: NotRequired[str]
     # 命中时的向量相似度分，供日志与调参参考
     knowledge_score: NotRequired[float]
+
+    # ===== 以下为四类记忆的长期记忆片段 =====
+    # 会话摘要 + 用户偏好渲染成的文本（QueryService 加载，各节点注入提示词）
+    memory_text: NotRequired[str]

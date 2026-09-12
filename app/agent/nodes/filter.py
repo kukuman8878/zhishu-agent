@@ -14,7 +14,7 @@ from langchain_core.prompts import PromptTemplate
 from langgraph.runtime import Runtime
 
 from app.agent.context import DataAgentContext
-from app.agent.llm import llm
+from app.agent.llm import aux_llm
 from app.agent.llm_utils import retry_async
 from app.agent.state import DataAgentState, MetricInfoState, TableInfoState
 from app.core.log import logger
@@ -40,19 +40,30 @@ async def filter_table(state: DataAgentState, runtime: Runtime[DataAgentContext]
         )
         # filter_table_info prompt 要求模型只输出 JSON 对象：表名 -> 字段名列表
         output_parser = JsonOutputParser()
-        # LCEL 管道：填充提示词 -> 调用模型 -> 解析 JSON
-        chain = prompt | llm | output_parser
+        # LCEL 管道：填充提示词 -> 调用辅助模型 -> 解析 JSON
+        chain = prompt | aux_llm | output_parser
 
-        result = await retry_async(
-            chain.ainvoke,
-            {
-                "query": query,
-                "table_infos": yaml.dump(
-                    table_infos, allow_unicode=True, sort_keys=False
-                ),
-            },
-            node_name="filter_table",
-        )
+        try:
+            result = await retry_async(
+                chain.ainvoke,
+                {
+                    "query": query,
+                    "table_infos": yaml.dump(
+                        table_infos, allow_unicode=True, sort_keys=False
+                    ),
+                },
+                node_name="filter_table",
+            )
+        except Exception as e:
+            # fail-open：过滤失败不阻断，保留全部候选交给下游
+            logger.warning(f"表过滤失败，保留全部候选：{e}")
+            result = None
+        # 模型未选出任何表（异常/空结果）时保留全部候选，避免下游无表可用
+        if not isinstance(result, dict) or not result:
+            logger.info("表过滤为空，保留全部候选表")
+            writer({"type": "progress", "step": step, "status": "success"})
+            return {"table_infos": table_infos}
+
         # 模型只负责选择，程序根据选择结果从原始 TableInfoState 中裁剪，避免模型重写复杂结构出错
         filtered_table_infos: list[TableInfoState] = []
         for table_info in table_infos:
@@ -95,19 +106,29 @@ async def filter_metric(state: DataAgentState, runtime: Runtime[DataAgentContext
         )
         # filter_metric_info prompt 要求模型只输出 JSON 数组
         output_parser = JsonOutputParser()
-        # LCEL 管道：填充提示词 -> 调用模型 -> 解析 JSON
-        chain = prompt | llm | output_parser
+        # LCEL 管道：填充提示词 -> 调用辅助模型 -> 解析 JSON
+        chain = prompt | aux_llm | output_parser
 
-        result = await retry_async(
-            chain.ainvoke,
-            {
-                "query": query,
-                "metric_infos": yaml.dump(
-                    metric_infos, allow_unicode=True, sort_keys=False
-                ),
-            },
-            node_name="filter_metric",
-        )
+        try:
+            result = await retry_async(
+                chain.ainvoke,
+                {
+                    "query": query,
+                    "metric_infos": yaml.dump(
+                        metric_infos, allow_unicode=True, sort_keys=False
+                    ),
+                },
+                node_name="filter_metric",
+            )
+        except Exception as e:
+            # fail-open：过滤失败不阻断，保留全部候选交给下游
+            logger.warning(f"指标过滤失败，保留全部候选：{e}")
+            result = None
+        if not isinstance(result, list) or not result:
+            logger.info("指标过滤为空，保留全部候选指标")
+            writer({"type": "progress", "step": step, "status": "success"})
+            return {"metric_infos": metric_infos}
+
         # 用模型返回的指标名称过滤原始结构，保留描述 依赖字段 别名等完整上下文
         filtered_metric_infos = [
             metric_info for metric_info in metric_infos if metric_info["name"] in result

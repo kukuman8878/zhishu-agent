@@ -7,10 +7,13 @@ text_utils 口径守卫单元测试
 
 from app.core.text_utils import (
     extract_numbers,
+    has_future_year,
     is_context_shortcut,
     metric_keywords,
+    region_keywords,
     same_metric_domain,
     same_numbers,
+    same_region_scope,
 )
 
 
@@ -78,6 +81,42 @@ class TestSameMetricDomain:
 
     def test_双方都无指标词视为兼容(self):
         assert same_metric_domain("介绍一下", "你在干嘛") is True
+
+
+class TestHasFutureYear:
+    """未来年份守卫（历史沉淀答案不能复用到未来时间）"""
+
+    def test_未来年份命中(self):
+        assert has_future_year("预测2030年的销售额") is True
+
+    def test_当前或历史年份不命中(self):
+        assert has_future_year("2024年的销售额") is False
+
+    def test_无年份不命中(self):
+        assert has_future_year("统计华北地区的销售总额") is False
+
+    def test_空串不命中(self):
+        assert has_future_year("") is False
+
+
+class TestSameRegionScope:
+    """地区口径守卫（不同地区不复用，防止"华中"复用到"华南"答案）"""
+
+    def test_不同地区不兼容(self):
+        assert (
+            same_region_scope("统计华中地区的订单总量", "统计华南地区订单的销售额")
+            is False
+        )
+
+    def test_相同地区兼容(self):
+        assert same_region_scope("统计华南地区的销售额", "华南地区订单量") is True
+
+    def test_一方无地区视为兼容(self):
+        assert same_region_scope("统计销售额", "华南地区订单量") is True
+
+    def test_提取地区关键词(self):
+        assert region_keywords("华东和华南对比") == {"华东", "华南"}
+        assert region_keywords("没有地区的问句") == set()
 
 
 class TestIsContextShortcut:

@@ -17,7 +17,7 @@ from langchain_core.prompts import PromptTemplate
 from langgraph.runtime import Runtime
 
 from app.agent.context import DataAgentContext
-from app.agent.llm import llm
+from app.agent.llm import aux_llm
 from app.agent.llm_utils import retry_async
 from app.agent.rerank import rerank_candidates
 from app.agent.state import DataAgentState
@@ -49,14 +49,21 @@ async def recall_column(state: DataAgentState, runtime: Runtime[DataAgentContext
             input_variables=["query"],
         )
         output_parser = JsonOutputParser()
-        chain = prompt | llm | output_parser
+        # 辅助任务下放辅助模型（aux_llm），失败退回原关键词（fail-open）
+        chain = prompt | aux_llm | output_parser
 
-        result = await retry_async(
-            chain.ainvoke, {"query": query}, node_name="recall_column"
-        )
+        try:
+            result = await retry_async(
+                chain.ainvoke, {"query": query}, node_name="recall_column"
+            )
+        except Exception as e:
+            logger.warning(f"字段关键词扩展失败，回退原关键词：{e}")
+            result = []
+        if not isinstance(result, list):
+            result = []
 
         # 去重后的关键词列表
-        all_keywords = list(set(keywords + result))
+        all_keywords = list(set(keywords + [str(k) for k in result]))
 
         # 批量 Embedding：一次性向量化所有关键词，避免逐条串行调用
         embeddings = await embedding_client.aembed_documents(all_keywords)
@@ -120,13 +127,19 @@ async def recall_metric(state: DataAgentState, runtime: Runtime[DataAgentContext
             input_variables=["query"],
         )
         output_parser = JsonOutputParser()
-        chain = prompt | llm | output_parser
+        chain = prompt | aux_llm | output_parser
 
-        result = await retry_async(
-            chain.ainvoke, {"query": query}, node_name="recall_metric"
-        )
+        try:
+            result = await retry_async(
+                chain.ainvoke, {"query": query}, node_name="recall_metric"
+            )
+        except Exception as e:
+            logger.warning(f"指标关键词扩展失败，回退原关键词：{e}")
+            result = []
+        if not isinstance(result, list):
+            result = []
 
-        all_keywords = list(set(keywords + result))
+        all_keywords = list(set(keywords + [str(k) for k in result]))
 
         # 批量 Embedding
         embeddings = await embedding_client.aembed_documents(all_keywords)
@@ -188,13 +201,19 @@ async def recall_value(state: DataAgentState, runtime: Runtime[DataAgentContext]
             input_variables=["query"],
         )
         output_parser = JsonOutputParser()
-        chain = prompt | llm | output_parser
+        chain = prompt | aux_llm | output_parser
 
-        result = await retry_async(
-            chain.ainvoke, {"query": query}, node_name="recall_value"
-        )
+        try:
+            result = await retry_async(
+                chain.ainvoke, {"query": query}, node_name="recall_value"
+            )
+        except Exception as e:
+            logger.warning(f"取值关键词扩展失败，回退原关键词：{e}")
+            result = []
+        if not isinstance(result, list):
+            result = []
 
-        all_keywords = list(set(keywords + result))
+        all_keywords = list(set(keywords + [str(k) for k in result]))
 
         # 并行 ES 检索：每个关键词同时发起全文检索
         async def _search_one(kw: str):

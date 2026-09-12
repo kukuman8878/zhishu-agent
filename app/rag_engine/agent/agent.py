@@ -11,6 +11,8 @@ import time
 from dataclasses import dataclass, field
 from typing import List, Optional
 
+from app.core.log import logger
+
 from .. import api_client
 from ..config import settings
 from ..retrieval.recall import IndexStore, retrieve_top_elements
@@ -123,12 +125,44 @@ class AgentTrace:
     evidence: List[PageEvidence] = field(default_factory=list)
     answer: str = ""
     rounds: int = 0
-    verify_reason: str = ""
     timing: dict = field(default_factory=dict)
     vlm_outputs: list = field(default_factory=list)
     selected_images: list = field(default_factory=list)
     crop_images: list = field(default_factory=list)
     strategy_name: str = ""
+    # 可溯源：本次答案实际引用的页码（1-based，来自模型 cited_pages 或证据页）
+    cited_pages: List[int] = field(default_factory=list)
+    # 是否因约束（重排分低于阈值 / 无可溯源引用）被拒绝作答
+    refused: bool = False
+    refuse_reason: str = ""
+
+
+# 重排分门：返回 (是否拒绝, 原因)。仅当证据里带 rerank 原始分时才判定（视觉/元素路径无此分）。
+# 最高重排分低于 rerank_min_score 视为语料未覆盖，拒绝作答以防编造。
+def _rerank_gate(evidence: List[PageEvidence]) -> tuple[bool, str]:
+    scores = [
+        e.sources.get("rerank")
+        for e in evidence
+        if e.sources and isinstance(e.sources.get("rerank"), (int, float))
+    ]
+    if not scores:
+        return False, ""
+    top = max(scores)
+    if top < settings.rerank_min_score:
+        return (
+            True,
+            f"top rerank score {top:.3f} < threshold {settings.rerank_min_score}",
+        )
+    return False, ""
+
+
+# 校验模型引用的页码是否都来自证据页；只保留证据里真实存在的页（1-based）；参数 cited=模型引用页码，evidence=证据页
+def _valid_cited(cited, evidence: List[PageEvidence]) -> List[int]:
+    pages = {e.page_idx + 1 for e in evidence}
+    valid = {
+        int(c) for c in (cited or []) if isinstance(c, (int, float)) and int(c) in pages
+    }
+    return sorted(valid)
 
 
 def _neighbor_expand(
@@ -214,6 +248,8 @@ class Agent:
             evidence = await retrieve(
                 sq, self.store, vec, top_k=settings.page_topk_text
             )
+            # 可溯源：把每个子问题的证据页也纳入引用候选，保证答案能落到具体页码
+            cited.extend(e.page_idx + 1 for e in evidence)
             ctx = _context_text(evidence)
             try:
                 raw = await api_client.chat_complete(
@@ -372,6 +408,7 @@ class Agent:
                         if best_len >= 5:
                             sres.answer = best_ans
                     trace.answer = sres.answer
+                    trace.cited_pages = [e.page_idx + 1 for e in trace.evidence]
                     trace.timing["total"] = round(time.perf_counter() - t0, 3)
                     return sres.answer, trace
 
@@ -387,6 +424,9 @@ class Agent:
             )
             trace.answer = result.answer
             trace.evidence = []
+            trace.cited_pages = [
+                int(c) for c in result.cited_pages if isinstance(c, (int, float))
+            ]
             trace.timing["total"] = round(time.perf_counter() - t0, 3)
             return result.answer, trace
 
@@ -419,6 +459,16 @@ class Agent:
         trace.evidence = evidence
         trace.timing["retrieve"] = round(time.perf_counter() - t0, 3)
 
+        # 3.1 重排分门：证据里最高 bge-reranker 相关分低于阈值 → 语料未覆盖，拒绝作答
+        refused, reason = _rerank_gate(evidence)
+        if refused:
+            logger.warning(f"文档问答拒绝作答（重排分过低）：{reason}")
+            trace.refused = True
+            trace.refuse_reason = reason
+            trace.answer = "NOT_FOUND"
+            trace.timing["total"] = round(time.perf_counter() - t0, 3)
+            return "NOT_FOUND", trace
+
         result = await answer_with_evidence(
             question,
             evidence,
@@ -428,21 +478,22 @@ class Agent:
             extra_hint=_usage_sentences(question, route, evidence),
         )
         trace.answer = result.answer
+        # 可溯源：优先用模型引用且必须落在证据页内，否则回落到证据页
+        trace.cited_pages = _valid_cited(result.cited_pages, evidence) or [
+            e.page_idx + 1 for e in evidence
+        ]
 
         # 4. 自校验 + 迭代（最多 max_agent_rounds 次额外重答）。
-        #    利用题末尾有确定性补全兜底（_complete_usage 从证据句补缺失利用对象），
-        #    且利用子查询检索已在作答前合并，校验重答轮冗余 → 跳过（时延优化）
+        #    利用题的利用子查询检索已在作答前合并、末尾还有 _complete_usage 确定性补全，
+        #    校验重答轮冗余 → 利用题跳过多轮校验（时延优化）
         supported = True
         missing_facts = ""
-        if util_q:
-            trace.verify_reason = "skipped (deterministic usage completion)"
-        else:
+        if not util_q:
             for rnd in range(settings.max_agent_rounds):
                 trace.rounds = rnd + 1
-                supported, reason, missing_facts = await verify_answer(
+                supported, _, missing_facts = await verify_answer(
                     question, result.answer, evidence
                 )
-                trace.verify_reason = reason
                 if supported:
                     break
                 evidence = _neighbor_expand(self.store, evidence)
@@ -529,6 +580,10 @@ class Agent:
         # 利用题补全：LLM 漏掉的利用对象从证据句补上
         trace.answer = _complete_usage(question, route, trace.evidence, trace.answer)
         result.answer = trace.answer
+
+        # 可溯源兜底：模型未给出有效引用时，回落到证据页，保证答案必可追溯
+        if not trace.cited_pages:
+            trace.cited_pages = [e.page_idx + 1 for e in trace.evidence]
 
         trace.timing["total"] = round(time.perf_counter() - t0, 3)
         return result.answer, trace

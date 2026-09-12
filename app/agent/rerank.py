@@ -42,10 +42,17 @@ async def rerank_candidates(
 
     rerank_client = runtime.context.get("rerank_client")
     try:
-        # 把每个候选渲染成一段文本，一次性提交给 cross-encoder 打分
+        # 把每个候选渲染成一段文本，分批提交给 cross-encoder 打分：
+        # TEI /rerank 有服务端单次 batch 上限（超限返回 413），分批后合并全局分数
         texts = [render(candidate) for candidate in candidates]
-        ranked = await rerank_client.rerank(query, texts)
-        # rerank 返回 (原始下标, 分数)，按下标回填对应候选并按分数排名取前 top_k
+        batch = max(1, app_config.rerank.max_batch)
+        ranked: list[tuple[int, float]] = []
+        for start in range(0, len(texts), batch):
+            chunk = texts[start : start + batch]
+            chunk_ranked = await rerank_client.rerank(query, chunk)
+            ranked.extend((start + idx, score) for idx, score in chunk_ranked)
+        ranked.sort(key=lambda item: item[1], reverse=True)
+        # rerank 返回 (全局原始下标, 分数)，按下标回填对应候选并按分数取前 top_k
         ordered = [candidates[index] for index, _ in ranked]
         picked = ordered[:top_k]
         logger.info(

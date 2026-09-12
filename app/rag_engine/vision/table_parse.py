@@ -176,7 +176,7 @@ def grid_evidence(grid: List[List[str]], max_cells: int = 120) -> str:
     return "\n".join(lines)
 
 
-def structured_table_evidence(body_html: str, kind_hint: str = "") -> str:
+def structured_table_evidence(body_html: str) -> str:
     """入口：HTML → 证据文本。混淆矩阵走专用表述，否则通用逐格。"""
     grid = parse_grid(body_html)
     if not grid:
@@ -212,7 +212,3 @@ def structured_is_clean(body_html: str) -> bool:
     if total == 0:
         return False
     return bad / total < 0.25
-
-
-def has_structured_table(el: dict) -> bool:
-    return bool(el.get("kind") == "table" and el.get("body"))

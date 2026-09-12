@@ -9,8 +9,8 @@
   - 配置禁用（doc_engine.enabled=false）或客户端未初始化：直接回复 message
     提示文档问答未启用，避免抛出 500；
   - 引擎返回 answer=NOT_FOUND：回复 message 说明文档中未找到答案；
-  - 网络/HTTP 异常：回复 message 说明文档服务暂不可用，并建议改问数据类问题。
-  - 服务可用但仍在查：先发 progress 事件（粗粒度），结束再发 doc 终态事件。
+  - 引擎内部异常：回复 message 说明文档问答引擎暂不可用，并建议改问数据类问题；
+  - 引擎可用但仍在查：先发 progress 事件（粗粒度），结束再发 doc 终态事件。
 """
 
 from langchain_core.messages import AIMessage
@@ -25,7 +25,7 @@ _NOT_FOUND = "NOT_FOUND"
 
 # 文档问答链路在引擎异常时回复用户的兜底文案
 _DOC_UNAVAILABLE = (
-    "文档问答服务暂不可用。你可以试试数据类问题（例如：统计华北地区的销售总额），"
+    "文档问答引擎暂不可用。你可以试试数据类问题（例如：统计华北地区的销售总额），"
     "或稍后再询问文档内容。"
 )
 
@@ -58,8 +58,15 @@ async def doc_query(state: DataAgentState, runtime: Runtime[DataAgentContext]):
         result = await rag_client.answer(query)
         answer = result.get("answer", "")
         if not answer or answer == _NOT_FOUND:
-            logger.info(f"文档中未找到答案：query={query}")
-            fallback = "在已索引的文档中未找到与问题相关的答案。你可以换个说法，或询问数据类问题。"
+            # 记录拒答原因（重排分过低 / 无可溯源引用 / 语料确实未命中）
+            reason = (result.get("reason") or "").strip()
+            logger.info(
+                f"文档未作答（未找到或校验拒绝）：query={query} reason={reason}"
+            )
+            fallback = (
+                "在已索引的文档中未找到足够依据回答该问题"
+                "（已做相关性过滤与可溯源校验）。你可以换个说法，或询问数据类问题。"
+            )
             writer({"type": "progress", "step": step, "status": "success"})
             writer({"type": "message", "content": fallback})
             return {

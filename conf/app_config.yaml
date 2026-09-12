@@ -41,6 +41,9 @@ rerank:
   # 召回阶段先从 Qdrant/ES 捞出更多候选（recall_limit），再交给 reranker 精排截取 top_k
   recall_limit: 30
   top_k: 10
+  # 单次重排请求最大文档数：TEI 服务端会按后端能力自行切分子批，客户端可一次提交整批候选
+  # （实测 8/16/32 均稳定）。候选超过该值时分批调用后合并分数
+  max_batch: 32
 
 es:
   host: localhost
@@ -54,6 +57,11 @@ llm:
   # 通用闲聊/意图判别使用的轻量快速模型，与问数主模型隔离
   # 注意：不要用免费档模型，硅基流动免费档被限速，单次可达 40s+，这里选响应快且便宜的模型
   chat_model_name: deepseek-ai/DeepSeek-V3
+  # 辅助任务分级：召回关键词扩展 / 表指标过滤选择 / 编排计划拆解等结构化任务下放到
+  # 廉价模型，主模型只保留 SQL 生成/修正与跨源综合等质量关键环节。
+  # aux_enabled=false 时辅助任务回退主模型，行为与旧版完全一致；改动需重启后端生效。
+  aux_enabled: true
+  aux_model_name: deepseek-ai/DeepSeek-V3
 
 # 跨源综合（hybrid）配置：v1=整句并行拼接；v2=计划-执行（子任务拆解）
 hybrid:
@@ -81,6 +89,81 @@ knowledge:
 # 查询轨迹持久化：每次问答结束后把结构化轨迹写入 query_trace 表（复盘/评估用）
 trace:
   enabled: true
+
+# 问答结果评估（LLM-as-judge + 规则检查）：每次问答终端答案后打分并写入 query_eval 表，
+# 低分可按 emit_note 发 note 提醒（不覆盖答案）。默认关闭；改动需重启后端生效。
+eval:
+  enabled: false
+  pass_threshold: 0.6
+  emit_note: true
+  # LLM 判定器权重（其余归规则判定器），取值 0~1
+  llm_weight: 0.7
+
+# 四类记忆（不再只存进程内存）：
+#   工作记忆=当前会话消息，持久化到 SQLite 文件（重启不丢）；
+#   摘要记忆=长对话滚动摘要，落 Meta MySQL；
+#   用户记忆=跨会话画像/偏好，落 Meta MySQL；
+#   知识记忆=已沉淀问答知识，复用 knowledge_item + Qdrant（无需额外配置）。
+# 改动需重启后端生效。
+memory:
+  enabled: true
+  sqlite_path: data/memory/checkpoints.db
+  # 消息条数达到该阈值时触发一次会话摘要
+  summary_trigger_messages: 12
+  user_memory_enabled: true
+  # 每轮注入提示词的用户偏好事实条数上限
+  user_memory_max_facts: 8
+  # 成本节流：仅在问题含偏好线索（我/以后/默认/习惯…）时才调模型抽取用户事实
+  user_memory_cue_only: true
+
+# 多智能体编排（Supervisor）：开启后入口 classify_route 直接转 orchestrator 主 Agent，
+# 由它先做知识复用判定，再计划分发到 sql/doc/chat 子 Agent 并综合出终端事件；
+# 默认 false，保持原「四级路由 + 内联链路」零回归。改动需重启后端生效。
+orchestrator:
+  enabled: false
+  max_tasks: 3
+
+# MCP（Model Context Protocol）外部工具：给闲聊/域外问答（answer_general）的廉价
+# chat_llm 绑定外部工具，回答天气、联网搜索等简单外部问题。仅 chat 路由触发，
+# 不影响数据分析/文档/知识链路。
+# 配置好后需重启后端生效（conf 改动），连接失败会自动跳过（fail-open，不影响闲聊）。
+mcp:
+  enabled: true        # 总开关；servers 为空时等价于关闭
+  timeout: 20.0        # 单次工具调用超时（秒）
+  max_tool_rounds: 3   # 单轮问答内最多工具调用轮数，防止反复调用
+  # 每个 server 用 agents 声明归属哪些子 Agent（chat/sql/doc/knowledge），
+  # get_tools(agent) 只返回该 Agent 的专属工具；未声明时默认归 chat（兼容旧配置）。
+  servers:
+    # ===== 内置本地工具集（无需外部 Key，开箱即用）=====
+    # 提供 当前时间/日期、算术计算器、单位换算；源码 app/mcp_servers/builtin_server.py
+    # use_current_python=true：用后端自身虚拟环境的解释器启动，避免 PATH 里的 python 缺 mcp 依赖
+    builtin:
+      agents: [chat]
+      transport: stdio
+      use_current_python: true
+      command: python
+      args: ["app/mcp_servers/builtin_server.py"]
+    # ===== 以下为通用可配置示例，按需取消注释并填 Key，支持 stdio / sse / streamable_http =====
+    # --- 联网搜索（Tavily MCP，stdio 方式，需先装 Node）---
+    # tavily:
+    #   agents: [chat, doc]     # chat 与 doc 子 Agent 共用
+    #   transport: stdio
+    #   command: npx
+    #   args: ["-y", "tavily-mcp@0.2.4"]
+    #   env:
+    #     TAVILY_API_KEY: ${oc.env:TAVILY_API_KEY,""}
+    # --- 天气查询（OpenWeather 官方远程 MCP，streamable_http 方式）---
+    # weather:
+    #   agents: [chat]
+    #   transport: streamable_http
+    #   url: "https://mcp.openweathermap.org/mcp"
+    # --- 某 Agent 专属工具示例：只绑给 sql 子 Agent（检索前先取外部口径/元数据）---
+    # sql_toolbox:
+    #   agents: [sql]
+    #   transport: sse
+    #   url: "https://your-mcp-host/sse"
+    #   headers:
+    #     Authorization: "Bearer ${oc.env:MCP_TOKEN,""}"
 
 # API 鉴权配置：api_key 为空时跳过鉴权（开发模式）
 api:
