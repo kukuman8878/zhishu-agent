@@ -1,5 +1,5 @@
 """
-SQL 分析子图（可独立编译复用的数据分析 12 节点链路）
+SQL 分析子图（可独立编译复用的数据分析 13 节点链路）
 
 用途：hybrid v2（计划-执行）需要对每个"sql 子任务"分别跑一遍完整的数据分析链路。
 LangGraph 不允许在图节点内部递归调用同一张正在执行的主图，因此把数据分析链路
@@ -57,7 +57,7 @@ def _make_run_sql_router():
 def build_sql_chain(
     builder: StateGraph, with_start: bool = True, end_node: str = END
 ) -> None:
-    """向 StateGraph builder 注册 SQL 分析链路的 12 个节点和所有边。
+    """向 StateGraph builder 注册 SQL 分析链路的 13 个节点和所有边。
 
     主图和子图共享此函数，新增/删除节点只需改这一处。
     参数 builder=已创建但尚未编译的 StateGraph 实例，要求已注册 extract_keywords 等节点；
@@ -116,7 +116,7 @@ def _register_sql_nodes(builder: StateGraph) -> None:
     builder.add_node("verify_result", timed_node("verify_result")(verify_result))
 
 
-# 构建并编译一份独立于主图的 SQL 分析子图（12 节点同拓扑），供 hybrid v2 对每个 sql 子任务 ainvoke
+# 构建并编译一份独立于主图的 SQL 分析子图（13 节点同拓扑），供 hybrid v2 对每个 sql 子任务 ainvoke
 def build_sql_graph():
     """构建一份独立编译的 SQL 分析子图，状态/上下文模式与主图一致"""
 

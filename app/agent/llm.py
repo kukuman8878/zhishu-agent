@@ -7,7 +7,7 @@
 - llm：主模型，只保留质量关键环节（SQL 生成/修正、跨源综合），temperature=0，
   由 conf/app_config.yaml 的 model_name 配置。
 - chat_llm：轻量模型，供意图判别/闲聊/结果自检/记忆/评估使用，由 chat_model_name 配置。
-- aux_llm：辅助模型，供召回关键词扩展、表/指标过滤选择、编排计划拆解等结构化辅助任务；
+- aux_llm：辅助模型，供召回关键词扩展、表/指标过滤选择等结构化辅助任务；
   由 aux_enabled/aux_model_name 配置，关闭时回退主模型。
 """
 
@@ -35,7 +35,7 @@ chat_llm = init_chat_model(
     temperature=0.7,
 )
 
-# 辅助任务模型：召回关键词扩展、表/指标过滤选择、编排计划拆解等结构化辅助任务。
+# 辅助任务模型：召回关键词扩展、表/指标过滤选择等结构化辅助任务。
 # 结构稳定性要求 temperature=0；aux_enabled=false 或未配置名称时直接复用主模型，
 # 保证"关掉分级 = 旧行为"，便于成本/质量 A/B 对比。
 if app_config.llm.aux_enabled and app_config.llm.aux_model_name:

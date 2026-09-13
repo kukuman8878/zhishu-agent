@@ -61,7 +61,7 @@ graph_builder.add_node("hybrid_v2", hybrid_v2)
 # 多智能体编排节点（orchestrator.enabled=true 时由 classify_route 转入）
 graph_builder.add_node("orchestrator", orchestrator)
 
-# 注册 SQL 链路的 12 个节点（与 sql_subgraph 共享注册逻辑，并统一包裹耗时统计）
+# 注册 SQL 链路的 13 个节点（与 sql_subgraph 共享注册逻辑，并统一包裹耗时统计）
 _register_sql_nodes(graph_builder)
 
 # 入口：意图路由
