@@ -40,7 +40,7 @@ async def doc_query(state: DataAgentState, runtime: Runtime[DataAgentContext]):
     writer({"type": "progress", "step": step, "status": "running"})
 
     # 引擎未启用时直接降级，不让文档引擎不可用拖垮整个请求
-    rag_client = runtime.context["rag_client"]
+    rag_client = runtime.context.get("rag_client")
     if rag_client is None:
         logger.warning("文档问答引擎未启用，doc 路由降级为 message")
         writer({"type": "progress", "step": step, "status": "error"})

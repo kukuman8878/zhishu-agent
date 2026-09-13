@@ -2,7 +2,6 @@
 知识沉淀服务（LLMWiki 式）
 
 负责组织问答知识沉淀的业务流程（召回复用由 classify_route / knowledge 子 Agent 负责）：
-  - hit     复用命中后累加该条目的命中次数
   - deposit 问答结束后把有价值结论（sql/doc/hybrid 路由）沉淀入库：
             问题向量写入 Qdrant，条目本体写入 Meta MySQL；
             与已有问题高度相似时合并刷新，避免知识库无限膨胀
@@ -36,7 +35,7 @@ from app.repositories.qdrant.knowledge_qdrant_repository import (
 
 
 class KnowledgeService:
-    """负责知识命中统计与问答沉淀的应用服务"""
+    """负责问答结论沉淀的应用服务（仅 deposit，召回复用由入口/子 Agent 负责）"""
 
     # 构造函数：保存知识 MySQL/Qdrant 仓储与 Embedding 客户端；参数为各仓储与客户端对象
     def __init__(
@@ -45,20 +44,12 @@ class KnowledgeService:
         knowledge_qdrant_repository: KnowledgeQdrantRepository,
         embedding_client: HuggingFaceEndpointEmbeddings,
     ):
-        # 知识条目本体（答案/SQL/命中统计）落 Meta MySQL
+        # 知识条目本体（问题/答案/SQL）落 Meta MySQL
         self.knowledge_mysql_repository = knowledge_mysql_repository
         # 问题向量索引走 Qdrant，支撑相似问题语义复用
         self.knowledge_qdrant_repository = knowledge_qdrant_repository
         # 向量化动作放在 Service 层，与元数据构建服务保持一致
         self.embedding_client = embedding_client
-
-    # 复用命中：把对应知识条目的命中次数加一（失败只记日志，不影响回答）；参数 item_id=知识条目主键 id
-    async def hit(self, item_id: str):
-        """知识复用命中后累加该条目的命中次数"""
-        try:
-            await self.knowledge_mysql_repository.increment_hit_count(item_id)
-        except Exception as e:
-            logger.warning(f"知识命中计数失败 item_id={item_id}: {e}")
 
     # 沉淀一条问答知识：先向量去重（高相似则合并刷新），否则新写入 MySQL + Qdrant；
     # 参数 question=用户问题，route=来源路由，answer=沉淀答案，sql=最终 SQL(可空)

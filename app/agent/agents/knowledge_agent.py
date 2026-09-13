@@ -85,7 +85,3 @@ class KnowledgeAgent:
             # fail-open：知识召回异常不阻断编排，退化为正常下发子任务
             logger.warning(f"知识子 Agent 召回失败：{e}")
             return AgentResult(agent=self.name, ok=False, error=str(e)[:200])
-
-
-# 模块级单例，供注册表复用
-knowledge_agent = KnowledgeAgent()

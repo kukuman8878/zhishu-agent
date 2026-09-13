@@ -206,6 +206,8 @@ if __name__ == "__main__":
 
         # 关闭显式创建的异步客户端，避免本地调试时连接资源悬挂
         await qdrant_client_manager.close()
+        await embedding_client_manager.close()
+        await rerank_client_manager.close()
         await es_client_manager.close()
         await meta_mysql_client_manager.close()
         await dw_mysql_client_manager.close()

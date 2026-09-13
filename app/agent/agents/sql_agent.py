@@ -46,7 +46,3 @@ class SQLAgent:
         except Exception as e:
             logger.error(f"SQL 子 Agent 执行失败：{e}")
             return AgentResult(agent=self.name, ok=False, error=str(e)[:200])
-
-
-# 模块级单例，供注册表复用
-sql_agent = SQLAgent()

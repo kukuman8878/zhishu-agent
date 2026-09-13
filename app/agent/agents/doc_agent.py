@@ -26,7 +26,7 @@ class DocAgent:
     async def run(
         self, question: str, runtime: Runtime[DataAgentContext], history: str = ""
     ) -> AgentResult:
-        rag_client = runtime.context["rag_client"]
+        rag_client = runtime.context.get("rag_client")
         if rag_client is None:
             return AgentResult(agent=self.name, ok=False, error="engine_disabled")
         try:
@@ -55,7 +55,3 @@ class DocAgent:
         except Exception as e:
             logger.error(f"文档子 Agent 执行失败：{e}")
             return AgentResult(agent=self.name, ok=False, error=str(e)[:200])
-
-
-# 模块级单例，供注册表复用
-doc_agent = DocAgent()

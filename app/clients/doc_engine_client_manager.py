@@ -100,6 +100,9 @@ class DocEngineClient:
                 "rounds": 0,
                 "route": {},
                 "cited_pages": [],
+                # 异常同样视为拒答：补齐与成功分支一致的拒答标记，保证字段契约稳定
+                "refused": True,
+                "reason": str(e)[:300],
                 "error": str(e)[:300],
             }
 

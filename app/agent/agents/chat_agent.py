@@ -74,7 +74,3 @@ class ChatAgent:
             return AgentResult(
                 agent=self.name, ok=False, payload={"text": ""}, error=str(e)[:200]
             )
-
-
-# 模块级单例，供注册表复用
-chat_agent = ChatAgent()

@@ -40,7 +40,9 @@ class QdrantClientManager:
     # 关闭 Qdrant 异步客户端连接，供应用关闭阶段释放资源调用；参数：无
     async def close(self):
         """关闭 Qdrant 客户端连接"""
-        await self.client.close()
+        if self.client is not None:
+            await self.client.close()
+            self.client = None
 
 
 # 创建一个全局的管理器对象

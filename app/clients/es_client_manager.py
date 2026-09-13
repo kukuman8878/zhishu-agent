@@ -39,7 +39,9 @@ class ESClientManager:
     # 关闭异步 Elasticsearch 客户端连接，供应用关闭阶段释放资源；参数：无
     async def close(self):
         """关闭客户端连接"""
-        await self.client.close()
+        if self.client is not None:
+            await self.client.close()
+            self.client = None
 
 
 # 创建一个全局可复用的 ES 客户端管理器对象

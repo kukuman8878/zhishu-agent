@@ -54,7 +54,11 @@ class MySQLClientManager:
     # 释放 Engine 持有的连接池资源，供应用关闭阶段调用；参数：无
     async def close(self):
         """释放连接池资源"""
-        await self.engine.dispose()
+        if self.engine is not None:
+            await self.engine.dispose()
+            self.engine = None
+            # Engine 已释放，同步清空基于它的 Session 工厂，保证幂等
+            self.session_factory = None
 
 
 # 一套连元数据库，一套连数仓模拟库

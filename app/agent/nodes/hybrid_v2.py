@@ -175,7 +175,7 @@ async def hybrid_v2(state: DataAgentState, runtime: Runtime[DataAgentContext]):
 
     writer = runtime.stream_writer
     query = state["query"]
-    rag_client = runtime.context["rag_client"]
+    rag_client = runtime.context.get("rag_client")
 
     # 第 1 步：计划拆解（失败/无效则退化为 v1 的两个整句任务）
     writer({"type": "progress", "step": "跨源计划拆解", "status": "running"})

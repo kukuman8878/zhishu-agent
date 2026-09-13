@@ -47,6 +47,7 @@ async def lifespan(app: FastAPI):
 
     # 关闭阶段：按应用级资源统一释放连接，避免进程退出前留下未关闭的网络连接
     await qdrant_client_manager.close()
+    await embedding_client_manager.close()
     await es_client_manager.close()
     await meta_mysql_client_manager.close()
     await dw_mysql_client_manager.close()

@@ -8,7 +8,7 @@ FastAPI 依赖组装
 
 from typing import Annotated
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException
 from langchain_huggingface import HuggingFaceEndpointEmbeddings
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -63,6 +63,9 @@ async def get_meta_mysql_repository(
 async def get_embedding_client() -> HuggingFaceEndpointEmbeddings:
     """获取应用启动阶段初始化好的 Embedding 客户端"""
 
+    # 正常 lifespan 下客户端已就绪；缺失说明启动初始化失败，明确报 503 便于定位
+    if embedding_client_manager.client is None:
+        raise HTTPException(status_code=503, detail="Embedding 服务未初始化")
     return embedding_client_manager.client
 
 
@@ -158,6 +161,9 @@ async def get_rag_client() -> DocEngineClient:
 async def get_rerank_client() -> RerankClient:
     """获取应用启动阶段初始化好的 cross-encoder 语义重排客户端"""
 
+    # 正常 lifespan 下客户端已就绪；缺失说明启动初始化失败，明确报 503 便于定位
+    if rerank_client_manager.client is None:
+        raise HTTPException(status_code=503, detail="重排服务未初始化")
     return rerank_client_manager.client
 
 

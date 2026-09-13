@@ -16,7 +16,7 @@
 # 后端（热重载，改 .py 自动生效；必须在项目根目录运行否则报缺 fastapi[standard]）
 uv run fastapi dev main.py --port 8000
 
-# 基础服务（MySQL/ES/Kibana/Qdrant/TEI 共 5 个容器）
+# 基础服务（MySQL/ES/Kibana/Qdrant/Embedding-TEI/Rerank-TEI 共 6 个容器）
 docker compose -f docker/docker-compose.yaml up -d
 docker compose -f docker/docker-compose.yaml ps
 
